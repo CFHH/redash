@@ -1,5 +1,5 @@
 from flask import Flask
-from flask_cors import *
+#from flask_cors import *
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from . import settings
@@ -44,7 +44,7 @@ def create_app():
     app = Redash()
 
     # 设置跨域
-    CORS(app, supports_credentials=True)
+    #CORS(app, supports_credentials=True)
 
     # Check and update the cached version for use by the client
     app.before_first_request(reset_new_version_status)
