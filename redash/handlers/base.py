@@ -22,6 +22,7 @@ routes = Blueprint(
 
 class BaseResource(Resource):
     #decorators = [login_required] #ZZW
+    decorators = []
 
     def __init__(self, *args, **kwargs):
         super(BaseResource, self).__init__(*args, **kwargs)
