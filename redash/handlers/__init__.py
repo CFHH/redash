@@ -15,7 +15,7 @@ def ping():
 
 
 @routes.route("/status.json")
-@login_required
+#@login_required #ZZW
 @require_super_admin
 def status_api():
     status = get_status()

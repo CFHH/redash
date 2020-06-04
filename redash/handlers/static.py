@@ -19,7 +19,7 @@ def render_index():
 
 
 @routes.route(org_scoped_rule("/dashboard/<slug>"), methods=["GET"])
-@login_required
+#@login_required #ZZW
 @csp_allows_embeding
 def dashboard(slug, org_slug=None):
     return render_index()
@@ -27,6 +27,6 @@ def dashboard(slug, org_slug=None):
 
 @routes.route(org_scoped_rule("/<path:path>"))
 @routes.route(org_scoped_rule("/"))
-@login_required
+#@login_required  #ZZW
 def index(**kwargs):
     return render_index()

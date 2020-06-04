@@ -53,7 +53,7 @@ order_results = partial(
 
 
 @routes.route(org_scoped_rule("/api/queries/format"), methods=["POST"])
-@login_required
+#@login_required #ZZW
 def format_sql_query(org_slug=None):
     """
     Formats an SQL query using the Python ``sqlparse`` formatter.

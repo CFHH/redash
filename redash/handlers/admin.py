@@ -13,7 +13,7 @@ from redash.monitor import rq_status
 
 @routes.route("/api/admin/queries/outdated", methods=["GET"])
 @require_super_admin
-@login_required
+#@login_required #ZZW
 def outdated_queries():
     manager_status = redis_connection.hgetall("redash:status")
     query_ids = json_loads(manager_status.get("query_ids", "[]"))
@@ -43,7 +43,7 @@ def outdated_queries():
 
 @routes.route("/api/admin/queries/rq_status", methods=["GET"])
 @require_super_admin
-@login_required
+#@login_required #ZZW
 def queries_rq_status():
     record_event(
         current_org,

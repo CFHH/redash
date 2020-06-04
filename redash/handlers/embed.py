@@ -13,7 +13,7 @@ from redash.security import csp_allows_embeding
     org_scoped_rule("/embed/query/<query_id>/visualization/<visualization_id>"),
     methods=["GET"],
 )
-@login_required
+#@login_required  #ZZW
 @csp_allows_embeding
 def embed(query_id, visualization_id, org_slug=None):
     record_event(
@@ -32,7 +32,7 @@ def embed(query_id, visualization_id, org_slug=None):
 
 
 @routes.route(org_scoped_rule("/public/dashboards/<token>"), methods=["GET"])
-@login_required
+#@login_required  #ZZW
 @csp_allows_embeding
 def public_dashboard(token, org_slug=None):
     if current_user.is_api_user():
