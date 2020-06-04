@@ -391,14 +391,120 @@ class AccessPermission(GFKBase, db.Model):
         }
         return d
 
+class AnonymousUser(AnonymousUserMixin):
+    def __init__(self, *args, **kwargs):
+        admin_user = User.get_by_id(1)
+        if admin_user != None:
+            self.admin_user = admin_user
+            self.id = admin_user.id
+            self.org_id = admin_user.org_id
+            self.org = admin_user.org
+            self.name = admin_user.name
+            self.email = admin_user.email
+            self.profile_image_url = admin_user.profile_image_url
+            self.password_hash = admin_user.password_hash
+            self.group_ids = admin_user.group_ids
+            self.api_key = admin_user.api_key
+            self.created_at = admin_user.created_at
+            self.updated_at = admin_user.updated_at
+            self.disabled_at = admin_user.disabled_at
+            self.active_at = admin_user.active_at
+            self.is_invitation_pending = admin_user.is_invitation_pending
+            self.is_email_verified = admin_user.is_email_verified
+            self.is_disabled = admin_user.is_disabled
+        else:
+            self.id = 1
+            self.org_id = 1
+            self.org = { #ZZW 不能Organization.get_by_id(org_id)会循环import, current_org(g.org) 默认用slug"default"
+                "id": self.org_id,
+                "name": "PlayBlock",
+                "slug": "default"
+            }
+            self.name = "zzw"
+            self.email = "13436361@qq.com"
+            email_md5 = hashlib.md5(self.email.lower().encode()).hexdigest()
+            self.profile_image_url = "https://www.gravatar.com/avatar/{}?s=40&d=identicon".format(email_md5)
+            self.password_hash = "$6$rounds=656000$tUcBCLrxAbEFvJb9$CHDBk7hwldUDV1wfP7dbkXl.O2tPCklAAqlePfZy/FIQa2fEueGtVb0zrTWp6wgFBBgvi2wtu3CD5mfLCcT2Z1"
+            self.group_ids = MutableList()
+            self.group_ids.append(1)
+            self.group_ids.append(2)
+            self.api_key = "zesIJzy7LOWxAraeFfN6uWoYlkU6TLQiljUe3Bva"
+            self.created_at = "2020-04-08 06:06:18.737423+00"
+            self.updated_at = "2020-05-28 06:33:48.287864+00"
+            self.disabled_at = None
+            self.active_at = "2020-05-28T06:33:41Z"
+            self.is_invitation_pending = False
+            self.is_email_verified = True
+            self.is_disabled = False
+        ##########
+        self.permissions = []
+        self.permissions.append("admin")
+        self.permissions.append("super_admin")
+        for p in Group.DEFAULT_PERMISSIONS:
+            self.permissions.append(p)
 
-class AnonymousUser(AnonymousUserMixin, PermissionsCheckMixin):
-    @property
-    def permissions(self):
-        return []
+    def __str__(self):
+        return "Anonymous:%s (%s)" % (self.name, self.email)
+
+    def has_permission(self, permission):
+        return True
+
+    def has_permissions(self, permissions):
+        return True
+
+    def has_access(self, obj, access_type):
+        return True
 
     def is_api_user(self):
         return False
+
+    def to_dict(self, with_api_key=False):
+        d = {
+            "id": self.id,
+            "name": self.name,
+            "email": self.email,
+            "profile_image_url": self.profile_image_url,
+            "groups": self.group_ids,
+            "updated_at": self.updated_at,
+            "created_at": self.created_at,
+            "disabled_at": self.disabled_at,
+            "is_disabled": self.is_disabled,
+            "active_at": self.active_at,
+            "is_invitation_pending": self.is_invitation_pending,
+            "is_email_verified": self.is_email_verified,
+            "auth_type": "password",
+            "api_key": self.api_key
+        }
+        return d
+
+    @property
+    def is_active(self):
+        return True
+
+    @property
+    def is_authenticated(self):
+        return True
+
+    @property
+    def is_anonymous(self):
+        return False
+
+    def get_id(self):
+        identity = hashlib.md5(
+            "{},{}".format(self.email, self.password_hash).encode()
+        ).hexdigest()
+        return "{0}-{1}".format(self.id, identity)
+
+    def __eq__(self, other):
+        if isinstance(other, UserMixin):
+            return self.get_id() == other.get_id()
+        return NotImplemented
+
+    def __ne__(self, other):
+        equal = self.__eq__(other)
+        if equal is NotImplemented:
+            return NotImplemented
+        return not equal
 
 
 class ApiUser(UserMixin, PermissionsCheckMixin):

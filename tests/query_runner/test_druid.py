@@ -151,6 +151,15 @@ json_str = simplejson.dumps(final_json_data)
 print(json_str)
 
 
+class AnonymousUser:
+  name = "zzw"
+  def __init__(self, *args, **kwargs):
+    self.org = "PlayBlock"
+
+
+user = AnonymousUser()
+print(name)
+print(user.org)
 
 
 
