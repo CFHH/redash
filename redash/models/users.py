@@ -391,7 +391,11 @@ class AccessPermission(GFKBase, db.Model):
         }
         return d
 
-class AnonymousUser(AnonymousUserMixin):
+def AnonymousUser():
+    admin_user = User.get_by_id(1)
+    return admin_user
+
+class AnonymousUser_bak(AnonymousUserMixin):
     def __init__(self, *args, **kwargs):
         admin_user = User.get_by_id(1)
         if admin_user != None:
