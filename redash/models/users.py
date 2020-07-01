@@ -313,6 +313,10 @@ class Group(db.Model, BelongsToOrgMixin):
         result = cls.query.filter(cls.org == org, cls.name.in_(group_names))
         return list(result)
 
+    @classmethod
+    def get_by_id(cls, _id):
+        return cls.query.filter(cls.id == _id).one()
+
 
 @generic_repr(
     "id", "object_type", "object_id", "access_type", "grantor_id", "grantee_id"

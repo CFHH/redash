@@ -42,6 +42,71 @@ def create_tables():
 
 
 @manager.command()
+def setup_admin():
+    from redash.models import Group, Organization, User, db
+
+    _wait_for_db_connection(db)
+
+    org_name = "PlayBlock"
+    user_name = "admin"
+    email = "admin@playblock.com"
+    password = "pbpw"
+
+    default_org = Organization(name=org_name, slug="default", settings={})
+    admin_group = Group(
+        name="admin",
+        permissions=["admin", "super_admin"],
+        org=default_org,
+        type=Group.BUILTIN_GROUP,
+    )
+    default_group = Group(
+        name="default",
+        permissions=Group.DEFAULT_PERMISSIONS,
+        org=default_org,
+        type=Group.BUILTIN_GROUP,
+    )
+
+    db.session.add_all([default_org, admin_group, default_group])
+    db.session.commit()
+
+    user = User(
+        org=default_org,
+        name=user_name,
+        email=email,
+        group_ids=[admin_group.id, default_group.id],
+    )
+    user.hash_password(password)
+
+    db.session.add(user)
+    db.session.commit()
+
+
+@manager.command()
+def setup_test_admin():
+    from redash.models import Group, Organization, User, db
+
+    _wait_for_db_connection(db)
+
+    user_name = "test1"
+    email = "test1@playblock.com"
+    password = "123456"
+
+    default_org = Organization.get_by_id(1)
+    admin_group = Group.get_by_id(1)
+    default_group = Group.get_by_id(2)
+
+    user = User(
+        org=default_org,
+        name=user_name,
+        email=email,
+        group_ids=[admin_group.id, default_group.id],
+    )
+    user.hash_password(password)
+    db.session.add(user)
+    db.session.commit()
+
+
+@manager.command()
 def drop_tables():
     """Drop the database tables."""
     from redash.models import db
