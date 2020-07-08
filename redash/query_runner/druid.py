@@ -15,6 +15,13 @@ from base64 import b64encode
 TYPES_MAP = {1: TYPE_STRING, 2: TYPE_INTEGER, 3: TYPE_BOOLEAN}
 PYTHON_TYPES_MAP = {"str": TYPE_STRING, "int": TYPE_INTEGER, "bool": TYPE_BOOLEAN, "float": TYPE_FLOAT}
 
+QUERY_MODE_SQL = 1
+QUERY_MODE_NATIVE = 2
+QUERY_MODE_CUSTOM = 3
+
+import logging
+logger = logging.getLogger("druid")
+
 
 class Druid(BaseQueryRunner):
     noop_query = "SELECT 1"
@@ -40,9 +47,71 @@ class Druid(BaseQueryRunner):
         return enabled
 
     def run_query(self, query, user):
-        if self.is_native_query(query):
-            return self.run_native_query(query, user)
+        querystr = self.remove_comments(query)
+        query_mode = self.get_query_mode(querystr)
+        logger.warning("!!!!!%s!!!!!, QUERY_MODE = %d, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", querystr, query_mode)
 
+        if query_mode == QUERY_MODE_SQL:
+            json_data, error = self.run_sql_query(querystr, user)
+        elif query_mode == QUERY_MODE_NATIVE:
+            json_data, error = self.run_native_query(querystr, user)
+        else:
+            json_data, error = self.run_custom_query(querystr, user)
+
+        '''
+        json_data是形如这样的格式：
+        {
+            "columns":
+                [
+                    {"name": "daytime", "friendly_name": "daytime", "type": "string"},
+                    {"name": "TOUR_DEST", "friendly_name": "TOUR_DEST", "type": "string"},
+                    {"name": "orders", "friendly_name": "orders", "type": "integer"},
+                    {"name": "cpo", "friendly_name": "cpo", "type": "integer"}
+                ],
+            "rows":
+                [
+                    {"daytime": "2020-01-02T00:00:00.000Z", "TOUR_DEST": "", "orders": 1.0, "cpo": 0.0},
+                    {"daytime": "2020-01-22T00:00:00.000Z", "TOUR_DEST": "\u8d35\u5dde", "orders": 1.9999999675783329, "cpo": 297.29051284564537}
+                ]
+        }
+        '''
+        if json_data != None:
+            json_str = json_dumps(json_data)
+            #print(json_str)
+        return json_str, error
+
+    def remove_comments(self, querystr):
+        '''
+        开头加了类似这样的注释：
+        /* Username: 13436361@qq.com, Query ID: 4, Queue: queries,
+        Job ID: 51003672-2c5b-4705-850e-27efc8b0b881,
+        Query Hash: a79e88ed1a8adf112794e614966d547e, Scheduled: False */
+        '''
+        if querystr[0:2] == "/*":
+            index = querystr.find("*/") + 2
+            for i in range(index, len(querystr)):
+                if querystr[i] != " ":
+                    querystr = querystr[i:]
+                    break
+        return querystr
+
+    def get_query_mode(self, querystr):
+        '''
+        三种模式:
+        1、SQL: QUERY_MODE_SQL
+        2、JSON: QUERY_MODE_NATIVE
+        3、自定义: QUERY_MODE_CUSTOM
+        '''
+        first_char = querystr[0]
+
+        if first_char == "{":
+            return QUERY_MODE_NATIVE
+        elif first_char == "X":
+            return QUERY_MODE_CUSTOM
+        else:
+            return QUERY_MODE_SQL
+
+    def run_sql_query(self, query, user):
         connection = connect(
             host=self.configuration["host"],
             port=self.configuration["port"],
@@ -65,32 +134,15 @@ class Druid(BaseQueryRunner):
 
             data = {"columns": columns, "rows": rows}
             error = None
-            json_data = json_dumps(data)
-            print(json_data)
+            #json_data = json_dumps(data)
+            #print(json_data)
         finally:
             connection.close()
 
-        return json_data, error
-
-    def is_native_query(self, querystr):
-        #开头加了类似这样的注释：/* Username: 13436361@qq.com, Query ID: 4, Queue: queries, Job ID: 51003672-2c5b-4705-850e-27efc8b0b881, Query Hash: a79e88ed1a8adf112794e614966d547e, Scheduled: False */
-        first_char = ""
-        if querystr[0:2] == "/*":
-            index = querystr.find("*/") + 2
-            for i in range(index, len(querystr)):
-                if querystr[i] != " ":
-                    first_char = querystr[i]
-                    break
-        if first_char == "{":
-            return True
-        else:
-            return False
+        return data, error
 
     def run_native_query(self, querystr, user):
         #pydruid搜索_prepare_url_headers_and_body和_stream_query
-        if querystr[0:2] == "/*":
-            index = querystr.find("*/") + 2
-            querystr = querystr[index:]
 
         host = self.configuration["host"]
         port = self.configuration["port"]
@@ -120,9 +172,9 @@ class Druid(BaseQueryRunner):
         else:
             raw_json_data = json_loads(data)
             final_json_data = self.post_process_native_result(raw_json_data)
-            json_str = json_dumps(final_json_data)
+            #json_str = json_dumps(final_json_data)
 
-        return json_str, error
+        return final_json_data, error
 
     def post_process_native_result(self, raw_json_data):
         '''
@@ -173,6 +225,9 @@ class Druid(BaseQueryRunner):
                 )
 
         return final_json_data
+
+    def run_custom_query(self, querystr, user):
+        pass
 
     def get_schema(self, get_stats=False):
         query = """
