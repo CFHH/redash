@@ -5,7 +5,7 @@ try:
 except ImportError:
     enabled = False
 
-from redash.query_runner import BaseQueryRunner, register
+from redash.query_runner import BaseQueryRunner, register, JobTimeoutException
 from redash.query_runner import TYPE_STRING, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_FLOAT
 from redash.utils import json_dumps, json_loads
 
@@ -14,17 +14,30 @@ from base64 import b64encode
 
 TYPES_MAP = {1: TYPE_STRING, 2: TYPE_INTEGER, 3: TYPE_BOOLEAN}
 PYTHON_TYPES_MAP = {"str": TYPE_STRING, "int": TYPE_INTEGER, "bool": TYPE_BOOLEAN, "float": TYPE_FLOAT}
+SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "NUMERIC"}
 
 QUERY_MODE_SQL = 1
 QUERY_MODE_NATIVE = 2
 QUERY_MODE_CUSTOM = 3
 
+import sqlite3
+import random
 import logging
 logger = logging.getLogger("druid")
 
 
+class CustomExceptin(Exception):
+    def __init__(self, info):
+        self.info = info
+    def __str__(self):
+        print(self.info)
+    def read(self):
+        return self.info
+
+
 class Druid(BaseQueryRunner):
     noop_query = "SELECT 1"
+    sqlite_dbpath = "druid_sqlite.db"
 
     @classmethod
     def configuration_schema(cls):
@@ -47,19 +60,20 @@ class Druid(BaseQueryRunner):
         return enabled
 
     def run_query(self, query, user):
-        querystr = self.remove_comments(query)
-        query_mode = self.get_query_mode(querystr)
-        logger.warning("!!!!!%s!!!!!, QUERY_MODE = %d, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", querystr, query_mode)
+        json_data, error = self.run_query_obj_result(query, user)
+        if error is not None:
+            logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", error)
 
-        if query_mode == QUERY_MODE_SQL:
-            json_data, error = self.run_sql_query(querystr, user)
-        elif query_mode == QUERY_MODE_NATIVE:
-            json_data, error = self.run_native_query(querystr, user)
+        if json_data is not None:
+            json_str = json_dumps(json_data)
+            #print(json_str)
         else:
-            json_data, error = self.run_custom_query(querystr, user)
+            json_str = ""
+        return json_str, error
 
+    def run_query_obj_result(self, query, user):
         '''
-        json_data是形如这样的格式：
+        输出这样的格式：
         {
             "columns":
                 [
@@ -75,10 +89,18 @@ class Druid(BaseQueryRunner):
                 ]
         }
         '''
-        if json_data != None:
-            json_str = json_dumps(json_data)
-            #print(json_str)
-        return json_str, error
+        querystr = self.remove_comments(query)
+        query_mode = self.get_query_mode(querystr)
+        logger.warning("!!!!!%s!!!!!, QUERY_MODE = %d, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", querystr, query_mode)
+
+        if query_mode == QUERY_MODE_SQL:
+            json_data, error = self.run_sql_query(querystr, user)
+        elif query_mode == QUERY_MODE_NATIVE:
+            json_data, error = self.run_native_query(querystr, user)
+        else:
+            json_data, error = self.run_custom_query(querystr, user)
+
+        return json_data, error
 
     def remove_comments(self, querystr):
         '''
@@ -167,6 +189,7 @@ class Druid(BaseQueryRunner):
         except urllib.error.HTTPError as e:
             error = e.read()
             json_str = None
+            raise
         except (KeyboardInterrupt, InterruptException, JobTimeoutException):
             raise
         else:
@@ -227,7 +250,134 @@ class Druid(BaseQueryRunner):
         return final_json_data
 
     def run_custom_query(self, querystr, user):
-        pass
+        '''
+        X{
+            "tables": [
+            {
+                "table_name": "tablea",
+                "datetime_column": "daytime",
+                "query": "SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime;"
+            }
+            ],
+            "final_sql": "SELECT * FROM tablea;"
+        }
+        '''
+        error = None
+        json_data = None
+
+        #解析
+        querystr = querystr[1:] #去掉X
+        try:
+            input_obj = json_loads(querystr)
+        except:
+            error = " ERROR data format 1"
+        if error is not None:
+            return None, error
+
+        tables = input_obj.get("tables")
+        final_query_sql = input_obj.get("final_sql")
+        if (tables is None) or (final_query_sql is None) or (type(tables).__name__ !="list") or (type(final_query_sql).__name__ !="str"):
+            error = " ERROR data format 2"
+            return None, error
+
+        try:
+            table_name_map = {}
+            #创建sqlite
+            sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
+            sqlite_cursor = sqlite_connection.cursor()
+
+            #依次处理单个表
+            for table_cofig in tables:
+                name = table_cofig.get("table_name")
+                datetime_column = table_cofig.get("datetime_column")
+                sub_query = table_cofig.get("query")
+                if (name is None) or (sub_query is None) or (type(name).__name__ !="str") or (type(sub_query).__name__ !="str"):
+                    raise CustomExceptin("ERROR data format 3")
+                if (datetime_column is not None) and (type(datetime_column).__name__ !="str"):
+                    raise CustomExceptin("ERROR data format 4")
+                query_data, error2 = self.run_query_obj_result(sub_query, user)
+                if error2 is not None:
+                    raise CustomExceptin(error2)
+                if (query_data is None) or query_data.get("columns") is None:
+                    raise CustomExceptin("ERROR data format 5")
+
+                #创建表
+                rand_num = random.randint(100000,999999)
+                table_name = name + str(rand_num)
+                table_name_map[name] = table_name
+                create_table_sql = "CREATE TABLE " + table_name + "("
+                colume_index = 0
+                for colume in query_data["columns"]:
+                    if colume["name"] == datetime_column:
+                        type_str = "DATETIME"
+                    else:
+                        type_str = SQLITE_TYPES_MAP.get(colume["type"])
+                        if type_str is None:
+                            type_str = "TEXT"
+                    if colume_index != 0:
+                        create_table_sql = create_table_sql + ", "
+                    colume_index += 1
+                    create_table_sql = create_table_sql + colume["name"] + " " + type_str
+                create_table_sql = create_table_sql + ");"
+                logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", create_table_sql)
+                sqlite_cursor.execute(create_table_sql)
+
+                #插入数据
+                row_index = 0
+                for row in query_data["rows"]:
+                    insert_sql = "INSERT INTO " + table_name + " VALUES("
+                    colume_index = 0
+                    for colume in query_data["columns"]:
+                        if colume_index != 0:
+                            insert_sql = insert_sql + ", "
+                        colume_index += 1
+                        value = row[colume["name"]]
+                        if colume["type"] == "string":
+                            value = "\"" + value + "\""
+                        else:
+                            value = str(value)
+                        insert_sql = insert_sql + value
+                    insert_sql = insert_sql + ");"
+                    if row_index == 0:
+                        logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", insert_sql)
+                    sqlite_cursor.execute(insert_sql)
+                    row_index += 1
+
+            #执行最后的查询
+            for (k,v) in table_name_map.items():
+                final_query_sql = final_query_sql.replace(k, v)
+            logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", final_query_sql)
+            sqlite_cursor.execute(final_query_sql)
+            if sqlite_cursor.description is not None:
+                columns = self.fetch_columns([(i[0], None) for i in sqlite_cursor.description])
+                rows = [
+                    dict(zip((column["name"] for column in columns), row))
+                    for row in sqlite_cursor
+                ]
+                error = None
+                json_data = {"columns": columns, "rows": rows}
+            else:
+                error = "Query completed but it returned no data."
+                json_data = None
+
+        except CustomExceptin as e:
+            error = e.read()
+            sqlite_connection.cancel()
+        except JobTimeoutException:
+            error = "JobTimeoutException"
+            sqlite_connection.cancel()
+        except:
+            error = "Unknown Exception"
+            sqlite_connection.cancel()
+        finally:
+            #删除所有数据表
+            for (k,v) in table_name_map.items():
+                drop_table_sql = "DROP TABLE IF EXISTS " + v + ";"
+                logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", drop_table_sql)
+                sqlite_cursor.execute(drop_table_sql)
+            sqlite_connection.close()
+
+        return json_data, error
 
     def get_schema(self, get_stats=False):
         query = """
