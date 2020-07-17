@@ -251,16 +251,70 @@ class Druid(BaseQueryRunner):
 
     def run_custom_query(self, querystr, user):
         '''
-        X{
-            "tables": [
+        例子1，子查询是个sql：
+X{
+    "tables": [
+    {
+        "table_name": "tablea",
+        "datetime_column": "daytime",
+        "query": "SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime;"
+    }
+    ],
+    "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tablea;"
+}
+        例子2，子查询是个json：
+X{
+    "tables": [
+    {
+        "table_name": "tablea",
+        "datetime_column": "daytime",
+        "query":
             {
-                "table_name": "tablea",
-                "datetime_column": "daytime",
-                "query": "SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime;"
+              "aggregations": [
+                {
+                  "type": "doubleSum",
+                  "name": "showCount",
+                  "fieldName": "AD_SHOW_COUNT"
+                },
+                {
+                  "type": "doubleSum",
+                  "name": "realcost",
+                  "fieldName": null,
+                  "expression": "(AD_CLICK_COUNT * KW_AVG_COST)"
+                },
+                {
+                  "type": "doubleSum",
+                  "name": "a1",
+                  "fieldName": "AD_CLICK_COUNT"
+                }
+              ],
+              "postAggregations": [
+                {
+                  "type": "expression",
+                  "name": "click_per_cost",
+                  "expression": "(realcost / a1)",
+                  "ordering": null
+                }
+              ],
+              "filter": {
+                "type": "selector",
+                "dimension": "EVENT_TYPE",
+                "value": "数据报告"
+              },
+              "dataSource": "travels_demo",
+              "dimension": "KEYWORD",
+              "granularity": "day",
+              "intervals": [
+                "1900-01-09T00:00:00.000Z/2992-01-10T00:00:00.000Z"
+              ],
+              "metric": "realcost",
+              "queryType": "topN",
+              "threshold": 30
             }
-            ],
-            "final_sql": "SELECT * FROM tablea;"
-        }
+    }
+    ],
+    "final_sql": "SELECT * FROM tablea;"
+}
         '''
         error = None
         json_data = None
@@ -289,12 +343,20 @@ class Druid(BaseQueryRunner):
             #依次处理单个表
             for table_cofig in tables:
                 name = table_cofig.get("table_name")
+                if (name is None) or (type(name).__name__ !="str"):
+                    raise CustomException("Incorrect Json data: table_name.")
                 datetime_column = table_cofig.get("datetime_column")
-                sub_query = table_cofig.get("query")
-                if (name is None) or (sub_query is None) or (type(name).__name__ !="str") or (type(sub_query).__name__ !="str"):
-                    raise CustomException("Incorrect Json data: table_name, datetime_column, query.")
                 if (datetime_column is not None) and (type(datetime_column).__name__ !="str"):
-                    raise CustomException("Incorrect Json data: table_name, datetime_column, query.")
+                    raise CustomException("Incorrect Json data: datetime_column.")
+                sub_query = table_cofig.get("query")
+                if sub_query is None:
+                    raise CustomException("Incorrect Json data: query.")
+                if type(sub_query).__name__ =="str":
+                    pass
+                elif type(sub_query).__name__ =="dict":
+                    sub_query = json_dumps(sub_query)
+                else:
+                    raise CustomException("Incorrect Json data: query.")
                 query_data, error2 = self.run_query_obj_result(sub_query, user)
                 if error2 is not None:
                     raise CustomException(error2)
