@@ -24,9 +24,9 @@ export const currentUser = {
   },
 
   id:1,
-  name:"Anonymous",
-  email:"Anonymous@admin",
-  profile_image_url:"https://www.gravatar.com/avatar/Anonymous?s=40&d=identicon",
+  name:"admin",
+  email:"admin@playblock.com",
+  profile_image_url:"https://www.gravatar.com/avatar/admin?s=40&d=identicon",
 };
 
 export const clientConfig = {};

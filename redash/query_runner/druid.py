@@ -26,11 +26,11 @@ import logging
 logger = logging.getLogger("druid")
 
 
-class CustomExceptin(Exception):
+class CustomException(Exception):
     def __init__(self, info):
         self.info = info
     def __str__(self):
-        print(self.info)
+        return self.info
     def read(self):
         return self.info
 
@@ -270,15 +270,15 @@ class Druid(BaseQueryRunner):
         try:
             input_obj = json_loads(querystr)
         except:
-            error = " ERROR data format 1"
+            error = "Incorrect Json format."
         if error is not None:
-            return None, error
+            raise CustomException(error)
 
         tables = input_obj.get("tables")
         final_query_sql = input_obj.get("final_sql")
         if (tables is None) or (final_query_sql is None) or (type(tables).__name__ !="list") or (type(final_query_sql).__name__ !="str"):
-            error = " ERROR data format 2"
-            return None, error
+            error = "Incorrect Json data: tables, final_sql."
+            raise CustomException(error)
 
         try:
             table_name_map = {}
@@ -292,14 +292,14 @@ class Druid(BaseQueryRunner):
                 datetime_column = table_cofig.get("datetime_column")
                 sub_query = table_cofig.get("query")
                 if (name is None) or (sub_query is None) or (type(name).__name__ !="str") or (type(sub_query).__name__ !="str"):
-                    raise CustomExceptin("ERROR data format 3")
+                    raise CustomException("Incorrect Json data: table_name, datetime_column, query.")
                 if (datetime_column is not None) and (type(datetime_column).__name__ !="str"):
-                    raise CustomExceptin("ERROR data format 4")
+                    raise CustomException("Incorrect Json data: table_name, datetime_column, query.")
                 query_data, error2 = self.run_query_obj_result(sub_query, user)
                 if error2 is not None:
-                    raise CustomExceptin(error2)
+                    raise CustomException(error2)
                 if (query_data is None) or query_data.get("columns") is None:
-                    raise CustomExceptin("ERROR data format 5")
+                    raise CustomException("Incorrect query_data: columns.")
 
                 #创建表
                 rand_num = random.randint(100000,999999)
@@ -360,15 +360,15 @@ class Druid(BaseQueryRunner):
                 error = "Query completed but it returned no data."
                 json_data = None
 
-        except CustomExceptin as e:
+        except CustomException as e:
             error = e.read()
-            sqlite_connection.cancel()
+            #sqlite_connection.cancel()
         except JobTimeoutException:
-            error = "JobTimeoutException"
-            sqlite_connection.cancel()
-        except:
-            error = "Unknown Exception"
-            sqlite_connection.cancel()
+            error = "Query exceeded Redash query execution time limit."
+            #sqlite_connection.cancel()
+        except Exception as e:
+            error = str(e)
+            #sqlite_connection.cancel()
         finally:
             #删除所有数据表
             for (k,v) in table_name_map.items():
@@ -377,6 +377,8 @@ class Druid(BaseQueryRunner):
                 sqlite_cursor.execute(drop_table_sql)
             sqlite_connection.close()
 
+        if error is not None:
+            raise CustomException(error)
         return json_data, error
 
     def get_schema(self, get_stats=False):
