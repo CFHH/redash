@@ -134,6 +134,7 @@ class Druid(BaseQueryRunner):
             return QUERY_MODE_SQL
 
     def run_sql_query(self, query, user):
+        context = {"useApproximateCountDistinct": False}
         connection = connect(
             host=self.configuration["host"],
             port=self.configuration["port"],
@@ -141,6 +142,7 @@ class Druid(BaseQueryRunner):
             scheme=(self.configuration.get("scheme") or "http"),
             user=(self.configuration.get("user") or None),
             password=(self.configuration.get("password") or None),
+            context=context,
         )
 
         cursor = connection.cursor()
