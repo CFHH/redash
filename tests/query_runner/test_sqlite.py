@@ -8,7 +8,8 @@ TYPE_BOOLEAN = "boolean"
 TYPE_STRING = "string"
 TYPE_DATETIME = "datetime"
 TYPE_DATE = "date"
-SQLITE_TYPES_MAP = {TYPE_STRING: "VARCHAR(255)", TYPE_INTEGER: "BIGINT", TYPE_FLOAT: "DOUBLE"}
+#SQLITE_TYPES_MAP = {TYPE_STRING: "VARCHAR(255)", TYPE_INTEGER: "BIGINT", TYPE_FLOAT: "DOUBLE"}
+SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "NUMERIC"}
 
 
 querystr = '''X{
@@ -72,26 +73,41 @@ for table_cofig in tables:
     sub_query = table_cofig.get("query")
     if type(sub_query).__name__ =="dict":
         sub_query_str = simplejson.dumps(sub_query)
-        print(sub_query_str)
+        #print(sub_query_str)
 
-a["sadas"]
+#a["sadas"]
 
 
-def fetch_columns(columns):
-    column_names = []
-    duplicates_counter = 1
-    new_columns = []
-    for col in columns:
-        column_name = col[0]
-        if column_name in column_names:
-            column_name = "{}{}".format(column_name, duplicates_counter)
-            duplicates_counter += 1
+class CustomException(Exception):
+    def __init__(self, info):
+        self.info = info
+    def __str__(self):
+        return self.info
+    def read(self):
+        return self.info
+class CustomException2(Exception):
+    def __init__(self, info):
+        self.info = info
+    def __str__(self):
+        return self.info
+    def read(self):
+        return self.info
 
-        column_names.append(column_name)
-        new_columns.append(
-            {"name": column_name, "friendly_name": column_name, "type": col[1]}
-        )
-    return new_columns
+'''
+try:
+    raise CustomException("asdf!!!")
+except CustomException as e:
+    error = str(e)
+    print(error)
+except:
+    error = "except"
+    print(error)
+finally:
+    print("finally!!!!")
+'''
+
+
+
 
 table_name = "table_test"
 datetime_column = "daytime"
@@ -111,41 +127,10 @@ json_data = {
     ]
 }
 
-
-class CustomException(Exception):
-    def __init__(self, info):
-        self.info = info
-    def __str__(self):
-        return self.info
-    def read(self):
-        return self.info
-class CustomException2(Exception):
-    def __init__(self, info):
-        self.info = info
-    def __str__(self):
-        return self.info
-    def read(self):
-        return self.info
-
-
-try:
-    raise CustomException("asdf!!!")
-except CustomException as e:
-    error = str(e)
-    print(error)
-except:
-    error = "except"
-    print(error)
-finally:
-    print("finally!!!!")
-
-a["sad"]
-
-
 json_str = simplejson.dumps(json_data)
 #print(json_str)
 
-num = random.randint(10000,99999)
+num = 12345 #random.randint(10000,99999)
 table_name = table_name + str(num)
 
 sqlite_connection = sqlite3.connect('test.db')
@@ -155,7 +140,6 @@ sqlite_cursor = sqlite_connection.cursor()
 drop_table_sql = "DROP TABLE IF EXISTS " + table_name + ";"
 print(drop_table_sql)
 sqlite_cursor.execute(drop_table_sql)
-print(sqlite_cursor.rowcount)
 
 #创建表
 create_table_sql = "CREATE TABLE " + table_name + "("
@@ -172,7 +156,6 @@ for colume in json_data["columns"]:
 create_table_sql = create_table_sql + ");"
 print(create_table_sql)
 sqlite_cursor.execute(create_table_sql)
-print(sqlite_cursor.rowcount)
 
 #插入数据
 for row in json_data["rows"]:
@@ -191,7 +174,7 @@ for row in json_data["rows"]:
     insert_sql = insert_sql + ");"
     print(insert_sql)
     sqlite_cursor.execute(insert_sql)
-    print(sqlite_cursor.rowcount)
+    #print(sqlite_cursor.rowcount)
 
 #查询
 query_sql = "SELECT * from table_test;"
@@ -203,8 +186,28 @@ sqlite_cursor.execute(query_sql)
 
 
 
+def fetch_columns(columns):
+    column_names = []
+    duplicates_counter = 1
+    new_columns = []
+    for col in columns:
+        column_name = col[0]
+        if column_name in column_names:
+            column_name = "{}{}".format(column_name, duplicates_counter)
+            duplicates_counter += 1
+
+        column_names.append(column_name)
+        new_columns.append(
+            {"name": column_name, "friendly_name": column_name, "type": col[1]}
+        )
+    return new_columns
+
+
 if sqlite_cursor.description is not None:
-    print(sqlite_cursor.description)
+    print("##########sqlite_cursor.description##########")
+    for i in sqlite_cursor.description:
+      print(i)
+    print("##########json##########")
     columns = fetch_columns([(i[0], None) for i in sqlite_cursor.description])
     rows = [
         dict(zip((column["name"] for column in columns), row))
