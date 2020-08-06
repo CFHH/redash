@@ -267,9 +267,14 @@ X{
         "table_name": "tablea",
         "datetime_column": "daytime",
         "query": "SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime"
+    },
+    {
+        "table_name": "tableb",
+        "datetime_column": "daytime",
+        "query": "SQLITE:SELECT * FROM tablea;"
     }
     ],
-    "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tablea;"
+    "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb;"
 }
         例子2，子查询是个json：
 X{
@@ -343,15 +348,13 @@ X{
             error = "Incorrect Json data: tables, final_sql."
             raise CustomException(error)
 
+        #对表名的随机化
+        table_name_map = {}
+        #创建sqlite
+        sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
+        sqlite_cursor = sqlite_connection.cursor()
+        sqlite_query_param = {"table_name_map": table_name_map}
         try:
-            #对表名的随机化
-            table_name_map = {}
-            #创建sqlite
-            sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
-            sqlite_cursor = sqlite_connection.cursor()
-
-            sqlite_query_param = {"table_name_map": table_name_map}
-
             #依次处理单个表
             for table_cofig in tables:
                 name = table_cofig.get("table_name")
@@ -417,6 +420,8 @@ X{
                         logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", insert_sql)
                     sqlite_cursor.execute(insert_sql)
                     row_index += 1
+                #提交：不然接下来的别的Cursor可能查不到更新的数据
+                sqlite_connection.commit()
 
             #执行最后的查询
             for (k,v) in table_name_map.items():
@@ -486,8 +491,6 @@ X{
                     for row in sqlite_cursor
                 ]
                 #columns里的type全是null
-                columns_str = json_dumps(columns)
-                logger.warning("########## columns:%s ########################################", columns_str)
                 columns = []
                 if len(rows) > 0:
                     row = rows[0]
@@ -496,11 +499,8 @@ X{
                             {"name": column_name, "friendly_name": column_name, "type": PYTHON_TYPES_MAP[type(column_value).__name__]}
                         )
                 else:
-                    logger.warning("########## NO DATA IN rows ########################################")
+                    logger.warning("########## NO DATA IN rows ！！！！########################################")
                 json_data = {"columns": columns, "rows": rows}
-
-                columns_str = json_dumps(columns)
-                logger.warning("########## columns:%s ########################################", columns_str)
             else:
                 error = "Query completed but it returned no data."
                 json_data = None
