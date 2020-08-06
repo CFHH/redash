@@ -19,6 +19,9 @@ SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "N
 QUERY_MODE_SQL = 1
 QUERY_MODE_NATIVE = 2
 QUERY_MODE_CUSTOM = 3
+QUERY_MODE_SQLITE = 4
+
+QUERY_MODE_SQLITE_PREFIX = "SQLITE:"
 
 import sqlite3
 import random
@@ -60,7 +63,7 @@ class Druid(BaseQueryRunner):
         return enabled
 
     def run_query(self, query, user):
-        json_data, error = self.run_query_obj_result(query, user)
+        json_data, error = self.run_query_obj_result(query, user, {})
         if error is not None:
             logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", error)
 
@@ -71,7 +74,7 @@ class Druid(BaseQueryRunner):
             json_str = ""
         return json_str, error
 
-    def run_query_obj_result(self, query, user):
+    def run_query_obj_result(self, query, user, sqlite_query_param):
         '''
         输出这样的格式：
         {
@@ -97,6 +100,8 @@ class Druid(BaseQueryRunner):
             json_data, error = self.run_sql_query(querystr, user)
         elif query_mode == QUERY_MODE_NATIVE:
             json_data, error = self.run_native_query(querystr, user)
+        elif query_mode == QUERY_MODE_SQLITE:
+            json_data, error = self.run_sqlite_query(querystr, sqlite_query_param)
         else:
             json_data, error = self.run_custom_query(querystr, user)
 
@@ -130,6 +135,8 @@ class Druid(BaseQueryRunner):
             return QUERY_MODE_NATIVE
         elif first_char == "X":
             return QUERY_MODE_CUSTOM
+        elif querystr.find(QUERY_MODE_SQLITE_PREFIX) == 0:
+            return QUERY_MODE_SQLITE
         else:
             return QUERY_MODE_SQL
 
@@ -337,16 +344,20 @@ X{
             raise CustomException(error)
 
         try:
+            #对表名的随机化
             table_name_map = {}
             #创建sqlite
             sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
             sqlite_cursor = sqlite_connection.cursor()
+
+            sqlite_query_param = {"table_name_map": table_name_map}
 
             #依次处理单个表
             for table_cofig in tables:
                 name = table_cofig.get("table_name")
                 if (name is None) or (type(name).__name__ !="str"):
                     raise CustomException("Incorrect Json data: table_name.")
+                logger.warning("#################### Processing Table:%s ####################", name)
                 datetime_column = table_cofig.get("datetime_column")
                 if (datetime_column is not None) and (type(datetime_column).__name__ !="str"):
                     raise CustomException("Incorrect Json data: datetime_column.")
@@ -359,7 +370,7 @@ X{
                     sub_query = json_dumps(sub_query)
                 else:
                     raise CustomException("Incorrect Json data: query.")
-                query_data, error2 = self.run_query_obj_result(sub_query, user)
+                query_data, error2 = self.run_query_obj_result(sub_query, user, sqlite_query_param)
                 if error2 is not None:
                     raise CustomException(error2)
                 if (query_data is None) or query_data.get("columns") is None:
@@ -410,7 +421,7 @@ X{
             #执行最后的查询
             for (k,v) in table_name_map.items():
                 final_query_sql = final_query_sql.replace(k, v)
-            logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", final_query_sql)
+            logger.warning("#################### Processing Final Query:%s ####################", final_query_sql)
             sqlite_cursor.execute(final_query_sql)
             if sqlite_cursor.description is not None:
                 columns = self.fetch_columns([(i[0], None) for i in sqlite_cursor.description])
@@ -419,6 +430,14 @@ X{
                     for row in sqlite_cursor
                 ]
                 error = None
+                #columns里的type全是null
+                columns = []
+                if len(rows) > 0:
+                    row = rows[0]
+                    for (column_name, column_value) in row.items():
+                        columns.append(
+                            {"name": column_name, "friendly_name": column_name, "type": PYTHON_TYPES_MAP[type(column_value).__name__]}
+                        )
                 json_data = {"columns": columns, "rows": rows}
             else:
                 error = "Query completed but it returned no data."
@@ -439,6 +458,56 @@ X{
                 drop_table_sql = "DROP TABLE IF EXISTS " + v + ";"
                 logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", drop_table_sql)
                 sqlite_cursor.execute(drop_table_sql)
+            sqlite_connection.close()
+
+        if error is not None:
+            raise CustomException(error)
+        return json_data, error
+
+    def run_sqlite_query(self, querystr, sqlite_query_param):
+        tables = []
+        querystr = querystr.replace(QUERY_MODE_SQLITE_PREFIX, '')
+        table_name_map = sqlite_query_param.get("table_name_map")
+        if table_name_map is not None:
+            for (k,v) in table_name_map.items():
+                querystr = querystr.replace(k, v)
+        logger.warning("########## run_sqlite_query:%s ########################################", querystr)
+
+        error = None
+        json_data = None
+        sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
+        sqlite_cursor = sqlite_connection.cursor()
+        try:
+            sqlite_cursor.execute(querystr)
+            if sqlite_cursor.description is not None:
+                columns = self.fetch_columns([(i[0], None) for i in sqlite_cursor.description])
+                rows = [
+                    dict(zip((column["name"] for column in columns), row))
+                    for row in sqlite_cursor
+                ]
+                #columns里的type全是null
+                columns_str = json_dumps(columns)
+                logger.warning("########## columns:%s ########################################", columns_str)
+                columns = []
+                if len(rows) > 0:
+                    row = rows[0]
+                    for (column_name, column_value) in row.items():
+                        columns.append(
+                            {"name": column_name, "friendly_name": column_name, "type": PYTHON_TYPES_MAP[type(column_value).__name__]}
+                        )
+                else:
+                    logger.warning("########## NO DATA IN rows ########################################")
+                json_data = {"columns": columns, "rows": rows}
+
+                columns_str = json_dumps(columns)
+                logger.warning("########## columns:%s ########################################", columns_str)
+            else:
+                error = "Query completed but it returned no data."
+                json_data = None
+        except Exception as e:
+            error = str(e)
+            #sqlite_connection.cancel()
+        finally:
             sqlite_connection.close()
 
         if error is not None:

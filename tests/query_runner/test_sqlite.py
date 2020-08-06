@@ -10,6 +10,7 @@ TYPE_DATETIME = "datetime"
 TYPE_DATE = "date"
 #SQLITE_TYPES_MAP = {TYPE_STRING: "VARCHAR(255)", TYPE_INTEGER: "BIGINT", TYPE_FLOAT: "DOUBLE"}
 SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "NUMERIC"}
+PYTHON_TYPES_MAP = {"str": TYPE_STRING, "int": TYPE_INTEGER, "bool": TYPE_BOOLEAN, "float": TYPE_FLOAT}
 
 
 querystr = '''X{
@@ -213,6 +214,13 @@ if sqlite_cursor.description is not None:
         dict(zip((column["name"] for column in columns), row))
         for row in sqlite_cursor
     ]
+    columns = []
+    if len(rows) > 0:
+        row = rows[0]
+        for (column_name, column_value) in row.items():
+            columns.append(
+                {"name": column_name, "friendly_name": column_name, "type": PYTHON_TYPES_MAP[type(column_value).__name__]}
+            )
     data = {"columns": columns, "rows": rows}
     json_str = simplejson.dumps(data)
     print(json_str)
