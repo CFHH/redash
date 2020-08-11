@@ -169,7 +169,7 @@ class Druid(BaseQueryRunner):
                 #print(json_data)
             else:
                 data = {"columns": [], "rows": []}
-                error = "'NoneType' object is not iterable"
+                error = None #如果结果就是没数据，那么不返会错误
         finally:
             connection.close()
 
@@ -277,7 +277,13 @@ X{
         "query": "SQLITE:SELECT * FROM tablea;"
     }
     ],
-    "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb;"
+    "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb;",
+    "data_ex":[
+    {
+        "name": "data1",
+        "query":"SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime"
+    }
+    ]
 }
         例子2，子查询是个json：
 X{
@@ -347,8 +353,15 @@ X{
 
         tables = input_obj.get("tables")
         final_query_sql = input_obj.get("final_sql")
-        if (tables is None) or (final_query_sql is None) or (type(tables).__name__ !="list") or (type(final_query_sql).__name__ !="str"):
-            error = "Incorrect Json data: tables, final_sql."
+        data_ex_query = input_obj.get("data_ex")
+        if (tables is None) or (type(tables).__name__ !="list"):
+            error = "Incorrect Json data: tables."
+            raise CustomException(error)
+        if (final_query_sql is None) or (type(final_query_sql).__name__ !="str"):
+            error = "Incorrect Json data: final_sql."
+            raise CustomException(error)
+        if (data_ex_query is not None) and (type(data_ex_query).__name__ !="list"):
+            error = "Incorrect Json data: data_ex."
             raise CustomException(error)
 
         #对表名的随机化
@@ -358,7 +371,7 @@ X{
         sqlite_cursor = sqlite_connection.cursor()
         sqlite_query_param = {"table_name_map": table_name_map}
         try:
-            #依次处理单个表
+            #一、依次处理单个表
             for table_cofig in tables:
                 name = table_cofig.get("table_name")
                 if (name is None) or (type(name).__name__ !="str"):
@@ -376,13 +389,15 @@ X{
                     sub_query = json_dumps(sub_query)
                 else:
                     raise CustomException("Incorrect Json data: query.")
-                query_data, error2 = self.run_query_obj_result(sub_query, user, sqlite_query_param)
-                if error2 is not None:
-                    raise CustomException(error2)
+                query_data, query_error = self.run_query_obj_result(sub_query, user, sqlite_query_param)
+                if query_error is not None:
+                    raise CustomException(query_error)
                 if (query_data is None) or query_data.get("columns") is None:
                     raise CustomException("Incorrect query_data: columns.")
 
                 #创建表
+                if len(query_data["columns"]) == 0:
+                    continue
                 rand_num = random.randint(100000,999999)
                 table_name = name + str(rand_num)
                 table_name_map[name] = table_name
@@ -426,7 +441,7 @@ X{
                 #提交：不然接下来的别的Cursor可能查不到更新的数据
                 sqlite_connection.commit()
 
-            #执行最后的查询
+            #二、执行最后的查询
             for (k,v) in table_name_map.items():
                 final_query_sql = final_query_sql.replace(k, v)
             logger.warning("#################### Processing Final Query:%s ####################", final_query_sql)
@@ -450,6 +465,29 @@ X{
             else:
                 error = "Query completed but it returned no data."
                 json_data = None
+
+            #三、执行额外的查询
+            if data_ex_query is not None:
+                json_data["data_ex"] = []
+                for ex_query in data_ex_query:
+                    name = ex_query.get("name")
+                    if (name is None) or (type(name).__name__ !="str"):
+                        raise CustomException("Incorrect data_ex: name.")
+                    sub_query = data_ex_query.get("query")
+                    if sub_query is None:
+                        raise CustomException("Incorrect data_ex: query.")
+                    if type(sub_query).__name__ =="str":
+                        pass
+                    elif type(sub_query).__name__ =="dict":
+                        sub_query = json_dumps(sub_query)
+                    else:
+                        raise CustomException("Incorrect Json data: query.")
+                    query_data, query_error = self.run_query_obj_result(sub_query, user, sqlite_query_param)
+                    if query_error is not None:
+                        raise CustomException(query_error)
+                    if (query_data is None) or query_data.get("columns") is None:
+                        raise CustomException("Incorrect query_data: columns.")
+                    json_data["data_ex"].append({"name": name, "data": query_data})
 
         except CustomException as e:
             error = e.read()
