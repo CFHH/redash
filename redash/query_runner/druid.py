@@ -156,17 +156,20 @@ class Druid(BaseQueryRunner):
 
         try:
             cursor.execute(query)
-            columns = self.fetch_columns(
-                [(i[0], TYPES_MAP.get(i[1], None)) for i in cursor.description]
-            )
-            rows = [
-                dict(zip((column["name"] for column in columns), row)) for row in cursor
-            ]
-
-            data = {"columns": columns, "rows": rows}
-            error = None
-            #json_data = json_dumps(data)
-            #print(json_data)
+            if cursor.description is not None:
+                columns = self.fetch_columns(
+                    [(i[0], TYPES_MAP.get(i[1], None)) for i in cursor.description]
+                )
+                rows = [
+                    dict(zip((column["name"] for column in columns), row)) for row in cursor
+                ]
+                data = {"columns": columns, "rows": rows}
+                error = None
+                #json_data = json_dumps(data)
+                #print(json_data)
+            else:
+                data = {"columns": [], "rows": []}
+                error = "'NoneType' object is not iterable"
         finally:
             connection.close()
 
