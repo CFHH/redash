@@ -357,6 +357,7 @@ X{
 
         tables = input_obj.get("tables")
         main_query = input_obj.get("main_query")
+        final_sqlite_query = input_obj.get("final_sql")
         sub_queries = input_obj.get("sub_queries")
         if (tables is not None) and (type(tables).__name__ !="list"):
             raise CustomException("Incorrect Json data: tables must be a list.")
@@ -367,6 +368,8 @@ X{
                 main_query = json_dumps(main_query)
             else:
                 raise CustomException("Incorrect Json data: main_query must be a string or json format.")
+        if (final_sqlite_query is not None) and (type(final_sqlite_query).__name__ !="str"):
+            raise CustomException("Incorrect Json data: final_sql must be a string.")
         if (sub_queries is not None) and (type(sub_queries).__name__ !="list"):
             raise CustomException("Incorrect Json data: sub_queries must be a string.")
 
@@ -453,10 +456,17 @@ X{
             #二、执行主查询
             if main_query is not None:
                 logger.warning("#################### Processing Main Query:%s ####################", main_query)
-                '''
+                json_data, error = self.run_query_obj_result(main_query, user, sqlite_query_param)
+                if error is not None:
+                    raise CustomException(error)
+                if (json_data is None) or json_data.get("columns") is None:
+                    raise CustomException("Incorrect query_data for main query.")
+            elif final_sqlite_query is not None:
+                #直接旧的
                 for (k,v) in table_name_map.items():
-                    main_query = main_query.replace(k, v)
-                sqlite_cursor.execute(main_query)
+                    final_sqlite_query = final_sqlite_query.replace(k, v)
+                logger.warning("#################### Processing Final Query:%s ####################", final_sqlite_query)
+                sqlite_cursor.execute(final_sqlite_query)
                 if sqlite_cursor.description is not None:
                     columns = self.fetch_columns([(i[0], None) for i in sqlite_cursor.description])
                     rows = [
@@ -476,12 +486,6 @@ X{
                 else:
                     error = "Query completed but it returned no data."
                     json_data = None
-                '''
-                json_data, error = self.run_query_obj_result(main_query, user, sqlite_query_param)
-                if error is not None:
-                    raise CustomException(error)
-                if (json_data is None) or json_data.get("columns") is None:
-                    raise CustomException("Incorrect query_data for main query.")
             else:
                 json_data = {"columns": [], "rows": []}
                 error = None
