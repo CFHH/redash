@@ -76,6 +76,22 @@ class Druid(BaseQueryRunner):
 
     def run_query_obj_result(self, query, user, sqlite_query_param):
         '''
+        postman方式：
+        POST http://10.15.101.10:5000/api/queries/7/results
+        body格式
+        {
+            "id": "237",
+            "parameters": {
+                "start_time_bc": "2020-02-01T00:00:00",
+                "end_time_bc": "2020-03-01T00:00:00",
+                "start_time_tb": "2019-02-01T00:00:00",
+                "end_time_tb": "2019-03-01T00:00:00",
+                "start_time_hb": "2020-01-01T00:00:00",
+                "end_time_hb": "2020-02-01T00:00:00"
+            },
+            "max_age": -1
+        }
+
         输出这样的格式：
         {
             "columns":
@@ -277,7 +293,8 @@ X{
         "query": "SQLITE:SELECT * FROM tablea"
     }
     ],
-    "main_query": "SQLITE:SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb;",
+    "main_query": "SQLITE:SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb",
+    "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb",
     "sub_queries":[
     {
         "name": "data1",
