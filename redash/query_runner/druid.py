@@ -16,10 +16,10 @@ TYPES_MAP = {1: TYPE_STRING, 2: TYPE_INTEGER, 3: TYPE_BOOLEAN}
 PYTHON_TYPES_MAP = {"str": TYPE_STRING, "int": TYPE_INTEGER, "bool": TYPE_BOOLEAN, "float": TYPE_FLOAT}
 SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "NUMERIC"}
 
-QUERY_MODE_SQL = 1
-QUERY_MODE_NATIVE = 2
-QUERY_MODE_CUSTOM = 3
-QUERY_MODE_SQLITE = 4
+QUERY_MODE_SQL = 1      #向druid发起sql查询
+QUERY_MODE_NATIVE = 2   #向druid发起json格式的查询
+QUERY_MODE_CUSTOM = 3   #自定义，总和模式
+QUERY_MODE_SQLITE = 4   #向临时SQLITE的查新
 
 QUERY_MODE_SQLITE_PREFIX = "SQLITE:"
 
@@ -109,11 +109,16 @@ class Druid(BaseQueryRunner):
         }
         '''
         querystr = self.remove_comments(query)
-        query_mode = self.get_query_mode(querystr)
+        query_mode, query_obj = self.get_query_mode(querystr)
         logger.warning("!!!!!%s!!!!!, QUERY_MODE = %d, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", querystr, query_mode)
 
         if query_mode == QUERY_MODE_SQL:
-            json_data, error = self.run_sql_query(querystr, user)
+            if query_obj is not None:
+                querystr = query_obj["sql"]
+                context = query_obj["context"]
+            else:
+                context = {}
+            json_data, error = self.run_sql_query(querystr, context, user)
         elif query_mode == QUERY_MODE_NATIVE:
             json_data, error = self.run_native_query(querystr, user)
         elif query_mode == QUERY_MODE_SQLITE:
@@ -148,16 +153,20 @@ class Druid(BaseQueryRunner):
         first_char = querystr[0]
 
         if first_char == "{":
-            return QUERY_MODE_NATIVE
+            query_obj = json_loads(querystr)
+            if query_obj.get("context") != None and query_obj.get("sql") != None:
+                return QUERY_MODE_SQL, query_obj
+            else:
+                return QUERY_MODE_NATIVE, None
         elif first_char == "X":
-            return QUERY_MODE_CUSTOM
+            return QUERY_MODE_CUSTOM, None
         elif querystr.find(QUERY_MODE_SQLITE_PREFIX) == 0:
-            return QUERY_MODE_SQLITE
+            return QUERY_MODE_SQLITE, None
         else:
-            return QUERY_MODE_SQL
+            return QUERY_MODE_SQL, None
 
-    def run_sql_query(self, query, user):
-        context = {"useApproximateCountDistinct": False}
+    def run_sql_query(self, query, context, user):
+        #context = {"useApproximateCountDistinct": False}
         connection = connect(
             host=self.configuration["host"],
             port=self.configuration["port"],
