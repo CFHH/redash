@@ -230,9 +230,11 @@ SCHEDULED_QUERY_TIME_LIMIT = int(
 # Time limit (in seconds) for adhoc queries. Set this to -1 to execute without a time limit.
 ADHOC_QUERY_TIME_LIMIT = int(os.environ.get("REDASH_ADHOC_QUERY_TIME_LIMIT", -1))
 
-JOB_EXPIRY_TIME = int(os.environ.get("REDASH_JOB_EXPIRY_TIME", 3600 * 12))
+#等0.5小时
+JOB_EXPIRY_TIME = int(os.environ.get("REDASH_JOB_EXPIRY_TIME", 60 * 30))
+#等2天（periodic_job_definitions中purge_failed_jobs的间隔是1天）
 JOB_DEFAULT_FAILURE_TTL = int(
-    os.environ.get("REDASH_JOB_DEFAULT_FAILURE_TTL", 7 * 24 * 60 * 60)
+    os.environ.get("REDASH_JOB_DEFAULT_FAILURE_TTL",  60 * 60 * 24 * 2)
 )
 
 LOG_LEVEL = os.environ.get("REDASH_LOG_LEVEL", "INFO")

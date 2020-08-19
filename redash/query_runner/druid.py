@@ -80,7 +80,7 @@ class Druid(BaseQueryRunner):
         POST http://10.15.101.10:5000/api/queries/7/results
         body格式
         {
-            "id": "237",
+            "id": "7",
             "parameters": {
                 "start_time_bc": "2020-02-01T00:00:00",
                 "end_time_bc": "2020-03-01T00:00:00",
@@ -89,7 +89,7 @@ class Druid(BaseQueryRunner):
                 "start_time_hb": "2020-01-01T00:00:00",
                 "end_time_hb": "2020-02-01T00:00:00"
             },
-            "max_age": -1
+            "max_age": -1   #-1表示有缓存就取缓存；0表示刷新
         }
 
         输出这样的格式：
@@ -294,7 +294,10 @@ X{
     {
         "table_name": "tablea",
         "datetime_column": "daytime",
-        "query": "SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime"
+        "query": {
+            "context": {"useApproximateCountDistinct": false},
+            "sql": "SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime"
+        }
     },
     {
         "table_name": "tableb",
@@ -306,12 +309,8 @@ X{
     "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb",
     "sub_queries":[
     {
-        "name": "data1",
-        "query":"SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime"
-    },
-    {
-        "name": "data2",
-        "query":"SQLITE:SELECT * FROM tablea"
+        "name": "exdata1",
+        "query":"SQLITE:SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb"
     }
     ]
 }
