@@ -3,6 +3,7 @@ from functools import partial
 
 from flask import current_app
 import logging
+from logging.handlers import TimedRotatingFileHandler
 import os
 import sys
 
@@ -36,7 +37,7 @@ def get_job_logger(name):
     formatter = logging.Formatter(settings.RQ_WORKER_JOB_LOG_FORMAT)
 
     stream_handler = logging.StreamHandler()
-    stream_handler.formatter = formatter
+    stream_handler.setFormatter(formatter)
     stream_handler.addFilter(CurrentJobFilter())
     logger.addHandler(stream_handler)
 
@@ -48,6 +49,7 @@ def get_job_logger(name):
     file_handler = TimedRotatingFileHandler(filename=file_name, when='D', interval=1, backupCount=15)
     file_handler.suffix = '%Y%m%d.log'
     file_handler.setFormatter(formatter)
+    stream_handler.addFilter(CurrentJobFilter())
     logger.addHandler(file_handler)
 
     logger.propagate = False

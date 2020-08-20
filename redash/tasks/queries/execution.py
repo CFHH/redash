@@ -31,7 +31,7 @@ def enqueue_query(
     query, data_source, user_id, is_api_key=False, scheduled_query=None, metadata={}
 ):
     query_hash = gen_query_hash(query)
-    logger.info("Inserting job for %s with metadata=%s", query_hash, metadata)
+    logger.info("[query_hash=%s] Inserting job with metadata=%s", query_hash, metadata)
     try_count = 0
     job = None
 
@@ -43,7 +43,7 @@ def enqueue_query(
             pipe.watch(_job_lock_id(query_hash, data_source.id))
             job_id = pipe.get(_job_lock_id(query_hash, data_source.id))
             if job_id:
-                logger.info("[%s] Found existing job: %s", query_hash, job_id)
+                logger.info("[query_hash=%s] Found existing job with id=%s", query_hash, job_id)
                 job_complete = None
 
                 try:
@@ -59,7 +59,7 @@ def enqueue_query(
                     job_exists = False
 
                 if job_complete or not job_exists:
-                    logger.info("[%s] %s, removing lock", query_hash, message)
+                    logger.info("[query_hash=%s] %s, removing lock", query_hash, message)
                     redis_connection.delete(_job_lock_id(query_hash, data_source.id))
                     job = None
 
@@ -100,7 +100,7 @@ def enqueue_query(
                     execute_query, query, data_source.id, metadata, **enqueue_kwargs
                 )
 
-                logger.info("[%s] Created new job: %s", query_hash, job.id)
+                logger.info("[query_hash=%s] Created new job with id=%s", query_hash, job.id)
                 pipe.set(
                     _job_lock_id(query_hash, data_source.id),
                     job.id,
@@ -113,7 +113,7 @@ def enqueue_query(
             continue
 
     if not job:
-        logger.error("[Manager][%s] Failed adding job for query.", query_hash)
+        logger.error("[Manager][query_hash=%s] Failed adding job for query.", query_hash)
 
     return job
 
@@ -165,7 +165,7 @@ class QueryExecutor(object):
         signal.signal(signal.SIGINT, signal_handler)
         started_at = time.time()
 
-        logger.debug("Executing query:\n%s", self.query)
+        #logger.debug("Executing query:\n%s", self.query)
         self._log_progress("executing_query")
 
         query_runner = self.data_source.query_runner
