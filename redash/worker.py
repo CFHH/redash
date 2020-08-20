@@ -3,6 +3,8 @@ from functools import partial
 
 from flask import current_app
 import logging
+import os
+import sys
 
 from rq import get_current_job
 from rq.decorators import job as rq_job
@@ -31,11 +33,23 @@ class CurrentJobFilter(logging.Filter):
 def get_job_logger(name):
     logger = logging.getLogger("rq.job." + name)
 
-    handler = logging.StreamHandler()
-    handler.formatter = logging.Formatter(settings.RQ_WORKER_JOB_LOG_FORMAT)
-    handler.addFilter(CurrentJobFilter())
+    formatter = logging.Formatter(settings.RQ_WORKER_JOB_LOG_FORMAT)
 
-    logger.addHandler(handler)
+    stream_handler = logging.StreamHandler()
+    stream_handler.formatter = formatter
+    stream_handler.addFilter(CurrentJobFilter())
+    logger.addHandler(stream_handler)
+
+    current_path = os.path.dirname(os.path.abspath(__file__))
+    redash_root_path = os.path.join(current_path, os.pardir)
+    log_path = os.path.join(redash_root_path, 'log')
+    file_name = os.path.join(log_path, 'redash.rq.log')
+
+    file_handler = TimedRotatingFileHandler(filename=file_name, when='D', interval=1, backupCount=15)
+    file_handler.suffix = '%Y%m%d.log'
+    file_handler.setFormatter(formatter)
+    logger.addHandler(file_handler)
+
     logger.propagate = False
 
     return logger

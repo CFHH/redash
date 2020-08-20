@@ -25,10 +25,22 @@ if os.environ.get("REMOTE_DEBUG"):
 
 
 def setup_logging():
-    handler = logging.StreamHandler(sys.stdout if settings.LOG_STDOUT else sys.stderr)
     formatter = logging.Formatter(settings.LOG_FORMAT)
-    handler.setFormatter(formatter)
-    logging.getLogger().addHandler(handler)
+
+    stream_handler = logging.StreamHandler(sys.stdout if settings.LOG_STDOUT else sys.stderr)
+    stream_handler.setFormatter(formatter)
+    logging.getLogger().addHandler(stream_handler)
+
+    current_path = os.path.dirname(os.path.abspath(__file__))
+    redash_root_path = os.path.join(current_path, os.pardir)
+    log_path = os.path.join(redash_root_path, 'log')
+    file_name = os.path.join(log_path, 'redash.log')
+
+    file_handler = TimedRotatingFileHandler(filename=file_name, when='D', interval=1, backupCount=15)
+    file_handler.suffix = '%Y%m%d.log'
+    file_handler.setFormatter(formatter)
+    logging.getLogger().addHandler(file_handler)
+
     logging.getLogger().setLevel(settings.LOG_LEVEL)
 
     # Make noisy libraries less noisy

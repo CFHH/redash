@@ -18,6 +18,9 @@ from .organization import DATE_FORMAT, TIME_FORMAT  # noqa
 _REDIS_URL = os.environ.get(
     "REDASH_REDIS_URL", os.environ.get("REDIS_URL", "redis://localhost:6379/0")
 )
+_RQ_REDIS_URL = os.environ.get(
+    "REDASH_RQ_REDIS_URL", os.environ.get("REDIS_RQ_URL", "redis://localhost:6379/1")
+)
 # This is the one to use for Redash' own connection:
 REDIS_URL = add_decode_responses_to_redis_url(_REDIS_URL)
 PROXIES_COUNT = int(os.environ.get("REDASH_PROXIES_COUNT", "1"))
@@ -39,7 +42,7 @@ SQLALCHEMY_DISABLE_POOL = parse_boolean(
 SQLALCHEMY_TRACK_MODIFICATIONS = False
 SQLALCHEMY_ECHO = False
 
-RQ_REDIS_URL = os.environ.get("RQ_REDIS_URL", _REDIS_URL)
+RQ_REDIS_URL = os.environ.get("RQ_REDIS_URL", _RQ_REDIS_URL) #_REDIS_URL
 
 # The following enables periodic job (every 5 minutes) of removing unused query results.
 QUERY_RESULTS_CLEANUP_ENABLED = parse_boolean(
