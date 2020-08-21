@@ -30,8 +30,9 @@ def _unlock(query_hash, data_source_id):
 def enqueue_query(
     query, data_source, user_id, is_api_key=False, scheduled_query=None, metadata={}
 ):
+    query_id = metadata.get("Query ID", "unknown")
     query_hash = gen_query_hash(query)
-    logger.info("[query_hash=%s] Inserting job with metadata=%s", query_hash, metadata)
+    logger.info("[query_id=%s] [query_hash=%s] Inserting job", query_id, query_hash)
     try_count = 0
     job = None
 
@@ -43,7 +44,7 @@ def enqueue_query(
             pipe.watch(_job_lock_id(query_hash, data_source.id))
             job_id = pipe.get(_job_lock_id(query_hash, data_source.id))
             if job_id:
-                logger.info("[query_hash=%s] Found existing job with id=%s", query_hash, job_id)
+                logger.info("[query_id=%s] [query_hash=%s] Found existing job [job.id=%s]", query_id, query_hash, job_id)
                 job_complete = None
 
                 try:
@@ -59,7 +60,7 @@ def enqueue_query(
                     job_exists = False
 
                 if job_complete or not job_exists:
-                    logger.info("[query_hash=%s] %s, removing lock", query_hash, message)
+                    logger.info("[query_id=%s] [query_hash=%s] %s, removing redis lock", query_id, query_hash, message)
                     redis_connection.delete(_job_lock_id(query_hash, data_source.id))
                     job = None
 
@@ -88,8 +89,9 @@ def enqueue_query(
                         "data_source_id": data_source.id,
                         "org_id": data_source.org_id,
                         "scheduled": scheduled_query_id is not None,
-                        "query_id": metadata.get("Query ID"),
+                        "query_id": query_id,
                         "user_id": user_id,
+                        "enqueue_time": time.time(),
                     },
                 }
 
@@ -100,7 +102,7 @@ def enqueue_query(
                     execute_query, query, data_source.id, metadata, **enqueue_kwargs
                 )
 
-                logger.info("[query_hash=%s] Created new job with id=%s", query_hash, job.id)
+                logger.info("[query_id=%s] [query_hash=%s] Created new job [job.id=%s]", query_id, query_hash, job.id)
                 pipe.set(
                     _job_lock_id(query_hash, data_source.id),
                     job.id,
@@ -110,10 +112,11 @@ def enqueue_query(
             break
 
         except redis.WatchError:
+            logger.error("[query_id=%s] [query_hash=%s] redis.WatchError, try_count = %d", query_id, query_hash, try_count)
             continue
 
     if not job:
-        logger.error("[Manager][query_hash=%s] Failed adding job for query.", query_hash)
+        logger.error("[Manager] [query_id=%s] [query_hash=%s] Failed adding job for query.", query_id, query_hash)
 
     return job
 
@@ -162,11 +165,14 @@ class QueryExecutor(object):
             models.scheduled_queries_executions.update(scheduled_query.id)
 
     def run(self):
-        signal.signal(signal.SIGINT, signal_handler)
         started_at = time.time()
+        signal.signal(signal.SIGINT, signal_handler)
 
-        #logger.debug("Executing query:\n%s", self.query)
-        self._log_progress("executing_query")
+        enqueue_time = self.metadata.get("enqueue_time", 0.0)
+        waiting_time = started_at - enqueue_time
+        message = "waiting_time=%f" % waiting_time
+
+        self._log_progress("EXECUTING_QUERY", message)
 
         query_runner = self.data_source.query_runner
         annotated_query = self._annotate_query(query_runner)
@@ -183,13 +189,8 @@ class QueryExecutor(object):
             logger.warning("Unexpected error while running query:", exc_info=1)
 
         run_time = time.time() - started_at
-
-        logger.info(
-            "job=execute_query query_hash=%s data_length=%s error=[%s]",
-            self.query_hash,
-            data and len(data),
-            error,
-        )
+        message = "run_time=%f, error=[%s], data_length=%s" % (run_time, error, data and len(data))
+        self._log_progress("AFTER_QUERY", message)
 
         _unlock(self.query_hash, self.data_source.id)
 
@@ -223,10 +224,10 @@ class QueryExecutor(object):
             updated_query_ids = models.Query.update_latest_result(query_result)
 
             models.db.session.commit()  # make sure that alert sees the latest query result
-            self._log_progress("checking_alerts")
+            self._log_progress("CHECKING_ALERTS")
             for query_id in updated_query_ids:
                 check_alerts_for_query.delay(query_id)
-            self._log_progress("finished")
+            self._log_progress("FINISHED")
 
             result = query_result.id
             models.db.session.commit()
@@ -239,22 +240,20 @@ class QueryExecutor(object):
 
         return query_runner.annotate_query(self.query, self.metadata)
 
-    def _log_progress(self, state):
+    def _log_progress(self, state, message=''):
         logger.info(
-            "job=execute_query state=%s query_hash=%s type=%s ds_id=%d  "
-            "job_id=%s queue=%s query_id=%s username=%s",
+            "job=execute_query [state=%s] [query_id=%s] [query_hash=%s] [ds_type=%s] [ds_id=%d] [queue=%s], %s",
             state,
+            self.metadata.get("Query ID", "unknown"),
             self.query_hash,
             self.data_source.type,
             self.data_source.id,
-            self.job.id,
             self.metadata.get("Queue", "unknown"),
-            self.metadata.get("Query ID", "unknown"),
-            self.metadata.get("Username", "unknown"),
+            message,
         )
 
     def _load_data_source(self):
-        logger.info("job=execute_query state=load_ds ds_id=%d", self.data_source_id)
+        self._log_progress("LOADING_DS")
         return models.DataSource.query.get(self.data_source_id)
 
 
