@@ -78,6 +78,7 @@ def enqueue_query(
                     scheduled_query, user_id, data_source.org_id
                 )
                 metadata["Queue"] = queue_name
+                metadata["Enqueue Time"] = time.time()
 
                 queue = Queue(queue_name)
                 enqueue_kwargs = {
@@ -91,7 +92,6 @@ def enqueue_query(
                         "scheduled": scheduled_query_id is not None,
                         "query_id": query_id,
                         "user_id": user_id,
-                        "enqueue_time": time.time(),
                     },
                 }
 
@@ -168,7 +168,7 @@ class QueryExecutor(object):
         started_at = time.time()
         signal.signal(signal.SIGINT, signal_handler)
 
-        enqueue_time = self.metadata.get("enqueue_time", 0.0)
+        enqueue_time = self.metadata.get("Enqueue Time", 0.0)
         waiting_time = started_at - enqueue_time
         message = "waiting_time=%f" % waiting_time
 
@@ -246,13 +246,14 @@ class QueryExecutor(object):
             state,
             self.metadata.get("Query ID", "unknown"),
             self.query_hash,
-            self.data_source.type,
-            self.data_source.id,
+            self.data_source and self.data_source.type,
+            self.data_source_id,
             self.metadata.get("Queue", "unknown"),
             message,
         )
 
     def _load_data_source(self):
+        self.data_source = None
         self._log_progress("LOADING_DS")
         return models.DataSource.query.get(self.data_source_id)
 
