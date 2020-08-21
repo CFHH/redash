@@ -44,23 +44,25 @@ def enqueue_query(
             pipe.watch(_job_lock_id(query_hash, data_source.id))
             job_id = pipe.get(_job_lock_id(query_hash, data_source.id))
             if job_id:
-                logger.info("[query_id=%s] [query_hash=%s] Found existing job [job.id=%s]", query_id, query_hash, job_id)
-                job_complete = None
+                job_status = "UNKNOWN"
+                job_complete = False
+                job_cancelled = "False"
 
                 try:
                     job = Job.fetch(job_id)
                     job_exists = True
-                    status = job.get_status()
-                    job_complete = status in [JobStatus.FINISHED, JobStatus.FAILED]
-
-                    if job_complete:
-                        message = "job found is complete (%s)" % status
+                    job_status = job.get_status()
+                    job_complete = job_status in [JobStatus.FINISHED, JobStatus.FAILED]
+                    if job.is_cancelled:
+                        job_cancelled = "True"
                 except NoSuchJobError:
-                    message = "job found has expired"
                     job_exists = False
+                    job_status = "EXPIRED"
 
-                if job_complete or not job_exists:
-                    logger.info("[query_id=%s] [query_hash=%s] %s, removing redis lock", query_id, query_hash, message)
+                logger.info("[query_id=%s] [query_hash=%s] Found existing job [job.id=%s] [job_status=%s] [job_cancelled=%s]", query_id, query_hash, job_id, job_status, job_cancelled)
+
+                if job_complete or (not job_exists):
+                    #logger.info("[query_id=%s] [query_hash=%s] [job.id=%s], removing redis lock", query_id, query_hash, job_id)
                     redis_connection.delete(_job_lock_id(query_hash, data_source.id))
                     job = None
 
