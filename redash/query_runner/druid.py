@@ -25,8 +25,11 @@ QUERY_MODE_SQLITE_PREFIX = "SQLITE:"
 
 import sqlite3
 import random
-import logging
-logger = logging.getLogger("druid")
+
+#import logging
+#logger = logging.getLogger("druid")
+from redash.worker import get_job_logger
+logger = get_job_logger(__name__)
 
 
 class CustomException(Exception):
@@ -41,6 +44,11 @@ class CustomException(Exception):
 class Druid(BaseQueryRunner):
     noop_query = "SELECT 1"
     sqlite_dbpath = "druid_sqlite.db"
+    '''
+    {"Username": "13436361@qq.com", "Query ID": "7", "Queue": "queries", "Enqueue Time": 1597988440.3357646,
+    "Job ID": "20529e79-80da-4de7-bfe0-bea63a35c9e8", "Query Hash": "add2ea64feea932bc1a12a20cdb29bc5", "Scheduled": false}
+    '''
+    metadata = {}
 
     @classmethod
     def configuration_schema(cls):
@@ -62,10 +70,38 @@ class Druid(BaseQueryRunner):
     def enabled(cls):
         return enabled
 
+    def _log_debug(self, message):
+        logger.debug("###druid### [query_id=%s] [query_hash=%s], %s",
+            self.metadata.get("Query ID", "unknown"),
+            self.metadata.get("Query Hash", "unknown"),
+            message,
+        )
+
+    def _log_info(self, message):
+        logger.info("###druid### [query_id=%s] [query_hash=%s], %s",
+            self.metadata.get("Query ID", "unknown"),
+            self.metadata.get("Query Hash", "unknown"),
+            message,
+        )
+
+    def _log_warning(self, message):
+        logger.warning("###druid### [query_id=%s] [query_hash=%s], %s",
+            self.metadata.get("Query ID", "unknown"),
+            self.metadata.get("Query Hash", "unknown"),
+            message,
+        )
+
+    def _log_error(self, message):
+        logger.error("###druid### [query_id=%s] [query_hash=%s], %s",
+            self.metadata.get("Query ID", "unknown"),
+            self.metadata.get("Query Hash", "unknown"),
+            message,
+        )
+
     def run_query(self, query, user):
         json_data, error = self.run_query_obj_result(query, user, {})
         if error is not None:
-            logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", error)
+            self._log_error(error)
 
         if json_data is not None:
             json_str = json_dumps(json_data)
@@ -110,7 +146,7 @@ class Druid(BaseQueryRunner):
         '''
         querystr = self.remove_comments(query)
         query_mode, query_obj = self.get_query_mode(querystr)
-        logger.warning("!!!!!%s!!!!!, QUERY_MODE = %d, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", querystr, query_mode)
+        self._log_info("query=#####%s#####, mode=%d" % (querystr, query_mode))
 
         if query_mode == QUERY_MODE_SQL:
             if query_obj is not None:
@@ -130,13 +166,19 @@ class Druid(BaseQueryRunner):
 
     def remove_comments(self, querystr):
         '''
-        开头加了类似这样的注释：
+        参见_annotate_query，开头加了类似这样的注释：
         /* Username: 13436361@qq.com, Query ID: 4, Queue: queries,
         Job ID: 51003672-2c5b-4705-850e-27efc8b0b881,
         Query Hash: a79e88ed1a8adf112794e614966d547e, Scheduled: False */
+        现在已经被我改成json了, 如下
+        /* {"Username": "13436361@qq.com", "Query ID": "7", "Queue": "queries", "Enqueue Time": 1597988440.3357646,
+        "Job ID": "20529e79-80da-4de7-bfe0-bea63a35c9e8", "Query Hash": "add2ea64feea932bc1a12a20cdb29bc5", "Scheduled": false} */
         '''
         if querystr[0:2] == "/*":
-            index = querystr.find("*/") + 2
+            index = querystr.find("*/")
+            comment = querystr[2:index]
+            self.metadata = json_loads(comment)
+            index += 2
             for i in range(index, len(querystr)):
                 if querystr[i] != " ":
                     querystr = querystr[i:]
@@ -411,7 +453,7 @@ X{
                     name = table_cofig.get("table_name")
                     if (name is None) or (type(name).__name__ !="str"):
                         raise CustomException("Incorrect Json data: table_name can't be none and must be a string.")
-                    logger.warning("#################### Processing Table:%s ####################", name)
+                    self._log_info("Processing Table[%s]" % name)
                     datetime_column = table_cofig.get("datetime_column")
                     if (datetime_column is not None) and (type(datetime_column).__name__ !="str"):
                         raise CustomException("Incorrect Json data in table %s: datetime_column must be a string." % name)
@@ -450,7 +492,7 @@ X{
                         colume_index += 1
                         create_table_sql = create_table_sql + colume["name"] + " " + type_str
                     create_table_sql = create_table_sql + ");"
-                    logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", create_table_sql)
+                    self._log_info(create_table_sql)
                     sqlite_cursor.execute(create_table_sql)
 
                     #插入数据
@@ -470,7 +512,7 @@ X{
                             insert_sql = insert_sql + value
                         insert_sql = insert_sql + ");"
                         if row_index == 0:
-                            logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", insert_sql)
+                            self._log_info(insert_sql)
                         sqlite_cursor.execute(insert_sql)
                         row_index += 1
                     #提交：不然接下来的别的Cursor可能查不到更新的数据
@@ -480,7 +522,7 @@ X{
 
             #二、执行主查询
             if main_query is not None:
-                logger.warning("#################### Processing Main Query:%s ####################", main_query)
+                self._log_info("Processing Main Query:#####%s#####" % main_query)
                 json_data, error = self.run_query_obj_result(main_query, user, sqlite_query_param)
                 if error is not None:
                     raise CustomException(error)
@@ -490,7 +532,7 @@ X{
                 #直接旧的
                 for (k,v) in table_name_map.items():
                     final_sqlite_query = final_sqlite_query.replace(k, v)
-                logger.warning("#################### Processing Final Query:%s ####################", final_sqlite_query)
+                self._log_info("Processing Final SQL:#####%s#####" % final_sqlite_query)
                 sqlite_cursor.execute(final_sqlite_query)
                 if sqlite_cursor.description is not None:
                     columns = self.fetch_columns([(i[0], None) for i in sqlite_cursor.description])
@@ -531,7 +573,7 @@ X{
                         sub_query = json_dumps(sub_query)
                     else:
                         raise CustomException("Incorrect Json data in sub_query %s: query must be a string or json format." % name)
-                    logger.warning("#################### Processing Sub Query:%s ####################", sub_query)
+                    self._log_info("Processing Sub Query:#####%s#####" % sub_query)
                     query_data, query_error = self.run_query_obj_result(sub_query, user, sqlite_query_param)
                     if query_error is not None:
                         raise CustomException(query_error)
@@ -552,7 +594,7 @@ X{
             #删除所有数据表
             for (k,v) in table_name_map.items():
                 drop_table_sql = "DROP TABLE IF EXISTS " + v + ";"
-                logger.warning("!!!!!%s!!!!!, !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", drop_table_sql)
+                self._log_info(drop_table_sql)
                 sqlite_cursor.execute(drop_table_sql)
             sqlite_connection.close()
 
@@ -567,7 +609,6 @@ X{
         if table_name_map is not None:
             for (k,v) in table_name_map.items():
                 querystr = querystr.replace(k, v)
-        logger.warning("########## run_sqlite_query:%s ########################################", querystr)
 
         error = None
         json_data = None
@@ -590,7 +631,7 @@ X{
                             {"name": column_name, "friendly_name": column_name, "type": PYTHON_TYPES_MAP[type(column_value).__name__]}
                         )
                 else:
-                    logger.warning("########## NO DATA IN rows ！！！！########################################")
+                    self._log_warning("run_sqlite_query, NO DATA IN rows")
                 json_data = {"columns": columns, "rows": rows}
             else:
                 error = "Query completed but it returned no data."

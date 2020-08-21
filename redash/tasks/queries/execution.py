@@ -186,7 +186,10 @@ class QueryExecutor(object):
                 error = str(e)
 
             data = None
-            logger.warning("Unexpected error while running query:", exc_info=1)
+            #logger.warning("Unexpected error while running query:", exc_info=1)
+            run_time = time.time() - started_at
+            message = "run_time=%f, error=[%s]" % (run_time, error)
+            self._log_progress("UNEXPECTED_ERROR", message)
 
         run_time = time.time() - started_at
         message = "run_time=%f, error=[%s], data_length=%s" % (run_time, error, data and len(data))
@@ -242,12 +245,12 @@ class QueryExecutor(object):
 
     def _log_progress(self, state, message=''):
         logger.info(
-            "job=execute_query [state=%s] [query_id=%s] [query_hash=%s] [ds_type=%s] [ds_id=%d] [queue=%s], %s",
+            "job=execute_query [state=%s] [query_id=%s] [query_hash=%s] [ds_id=%d] [ds_type=%s] [queue=%s], %s",
             state,
             self.metadata.get("Query ID", "unknown"),
             self.query_hash,
-            self.data_source and self.data_source.type,
             self.data_source_id,
+            self.data_source and self.data_source.type,
             self.metadata.get("Queue", "unknown"),
             message,
         )

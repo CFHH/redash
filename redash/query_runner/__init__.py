@@ -4,7 +4,7 @@ from dateutil import parser
 import requests
 
 from redash import settings
-from redash.utils import json_loads
+from redash.utils import json_dumps, json_loads
 from rq.timeouts import JobTimeoutException
 
 logger = logging.getLogger(__name__)
@@ -78,7 +78,8 @@ class BaseQueryRunner(object):
         if not self.should_annotate_query:
             return query
 
-        annotation = ", ".join(["{}: {}".format(k, v) for k, v in metadata.items()])
+        #annotation = ", ".join(["{}: {}".format(k, v) for k, v in metadata.items()])
+        annotation = json_dumps(metadata)
         annotated_query = "/* {} */ {}".format(annotation, query)
         return annotated_query
 
