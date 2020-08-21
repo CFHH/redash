@@ -151,6 +151,7 @@ class QueryExecutor(object):
     ):
         self.job = get_current_job()
         self.query = query
+        self.query_hash = gen_query_hash(self.query)
         self.data_source_id = data_source_id
         self.metadata = metadata
         self.data_source = self._load_data_source()
@@ -158,7 +159,6 @@ class QueryExecutor(object):
 
         # Close DB connection to prevent holding a connection for a long time while the query is executing.
         models.db.session.close()
-        self.query_hash = gen_query_hash(self.query)
         self.scheduled_query = scheduled_query
         # Load existing tracker or create a new one if the job was created before code update:
         if scheduled_query:
