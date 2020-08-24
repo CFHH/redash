@@ -275,6 +275,8 @@ def serialize_job(job):
         JobStatus.STARTED: 2,
         JobStatus.FINISHED: 3,
         JobStatus.FAILED: 4,
+        JobStatus.DEFERRED: 5,
+        #JobStatus.SCHEDULED: 6,  #当前rq版本不支持
     }
 
     job_status = job.get_status()
@@ -301,6 +303,7 @@ def serialize_job(job):
             "id": job.id,
             "updated_at": updated_at,
             "status": status,
+            "status_readable": job_status,
             "error": error,
             "query_result_id": query_result_id,
         }
