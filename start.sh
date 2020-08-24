@@ -4,21 +4,3 @@ redis-cli -h localhost -p 6379 flushall
 ./manage.py rq worker queries periodic emails default schemas &
 ./manage.py rq worker scheduled_queries &
 ./manage.py rq scheduler &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
-sleep 1
-./manage.py rq worker scheduled_queries &
