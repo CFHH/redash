@@ -226,15 +226,17 @@ STATIC_ASSETS_PATH = fix_assets_path(
 )
 
 # Time limit (in seconds) for scheduled queries. Set this to -1 to execute without a time limit.
+# rq源码里0搜索.timeout，存放在StartedJobRegistry里算score用时间，正常流程代码会加入并删除，否则等到期，应该改成一个正数更靠谱一点
 SCHEDULED_QUERY_TIME_LIMIT = int(
     os.environ.get("REDASH_SCHEDULED_QUERY_TIME_LIMIT", -1)
 )
 
 # Time limit (in seconds) for adhoc queries. Set this to -1 to execute without a time limit.
+# 同SCHEDULED_QUERY_TIME_LIMIT
 ADHOC_QUERY_TIME_LIMIT = int(os.environ.get("REDASH_ADHOC_QUERY_TIME_LIMIT", -1))
 
-#等0.5小时
-JOB_EXPIRY_TIME = int(os.environ.get("REDASH_JOB_EXPIRY_TIME", 60 * 30))
+#job.result_ttl, job执行成功后这个缓存"rq:job:e27209059575fcc17c527c47d0957cb21756e551的保留时间
+JOB_EXPIRY_TIME = int(os.environ.get("REDASH_JOB_EXPIRY_TIME", 60))
 #等2天（periodic_job_definitions中purge_failed_jobs的间隔是1天）
 JOB_DEFAULT_FAILURE_TTL = int(
     os.environ.get("REDASH_JOB_DEFAULT_FAILURE_TTL",  60 * 60 * 24 * 2)
