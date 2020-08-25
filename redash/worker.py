@@ -26,14 +26,15 @@ class CurrentJobFilter(logging.Filter):
         current_job = get_current_job()
 
         record.job_id = current_job.id if current_job else ""
-        record.job_func_name = current_job.func_name if current_job else ""
+        record.job_func = current_job.func_name if current_job else ""
 
         return True
 
 
 def get_job_logger(name):
-    logger = logging.getLogger("rq.job." + name)
+    logger = logging.getLogger("rq.job#" + name)
 
+    '''
     formatter = logging.Formatter(settings.RQ_WORKER_JOB_LOG_FORMAT)
 
     stream_handler = logging.StreamHandler()
@@ -53,5 +54,6 @@ def get_job_logger(name):
     logger.addHandler(file_handler)
 
     logger.propagate = False
+    '''
 
     return logger

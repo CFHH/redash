@@ -70,10 +70,10 @@ def enqueue_query(
                 pipe.multi()
 
                 if scheduled_query:
-                    queue_name = data_source.scheduled_queue_name
+                    queue_name = data_source.scheduled_queue_name  #默认都是scheduled_queries
                     scheduled_query_id = scheduled_query.id
                 else:
-                    queue_name = data_source.queue_name
+                    queue_name = data_source.queue_name #默认都是queries
                     scheduled_query_id = None
 
                 time_limit = settings.dynamic_settings.query_time_limit(

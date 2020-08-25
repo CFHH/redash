@@ -25,11 +25,21 @@ if os.environ.get("REMOTE_DEBUG"):
     ptvsd.enable_attach(address=("0.0.0.0", 5678))
 
 
+from rq import get_current_job
+class CurrentJobFilter(logging.Filter):
+    def filter(self, record):
+        current_job = get_current_job()
+        record.job_id = current_job.id if current_job else ""
+        record.job_func = current_job.func_name if current_job else ""
+        return True
+
+
 def setup_logging():
-    formatter = logging.Formatter(settings.LOG_FORMAT)
+    formatter = logging.Formatter(settings.RQ_WORKER_JOB_LOG_FORMAT) #RQ_WORKER_JOB_LOG_FORMAT, LOG_FORMAT
 
     stream_handler = logging.StreamHandler(sys.stdout if settings.LOG_STDOUT else sys.stderr)
     stream_handler.setFormatter(formatter)
+    stream_handler.addFilter(CurrentJobFilter())
     logging.getLogger().addHandler(stream_handler)
 
     current_path = os.path.dirname(os.path.abspath(__file__))
@@ -40,6 +50,7 @@ def setup_logging():
     file_handler = TimedRotatingFileHandler(filename=file_name, when='D', interval=1, backupCount=15)
     file_handler.suffix = '%Y%m%d.log'
     file_handler.setFormatter(formatter)
+    stream_handler.addFilter(CurrentJobFilter())
     logging.getLogger().addHandler(file_handler)
 
     logging.getLogger().setLevel(settings.LOG_LEVEL)
