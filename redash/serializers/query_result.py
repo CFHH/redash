@@ -8,6 +8,25 @@ from redash.query_runner import TYPE_BOOLEAN, TYPE_DATE, TYPE_DATETIME
 from redash.authentication.org_resolving import current_org
 
 
+Encoding = 'gbk' #utf-8-sig
+class UnicodeWriter:
+    def __init__(self, stream, dialect = csv.excel, encoding = Encoding, **kwds):
+        self.stream = stream
+        self.encoding = encoding
+        self.encoder = codecs.getincrementalencoder(encoding)()
+        self.buff = StringIO()
+        self.writer = csv.writer(self.buff, dialect = dialect, **kwds)
+
+    def writerow(self, row):
+        self.writer.writerow(row)
+        data = self.buff.getvalue()
+        data = self.encoder.encode(data)
+        data = str(data, encoding = self.encoding)
+        self.stream.write(data)
+        self.buff.truncate(0)
+        self.buff.seek(0)
+
+
 def _convert_format(fmt):
     return (
         fmt.replace("DD", "%d")
@@ -82,18 +101,32 @@ def serialize_query_result_to_dsv(query_result, delimiter):
     s = io.StringIO()
 
     query_data = query_result.data
+    data_ex = query_data.get("data_ex")
 
-    fieldnames, special_columns = _get_column_lists(query_data["columns"] or [])
+    datas = []
+    datas.append(query_data)
+    if data_ex != None:
+        for item in data_ex:
+            data = item.get("data")
+            if data is not None:
+                datas.append(data)
 
-    writer = csv.DictWriter(s, extrasaction="ignore", fieldnames=fieldnames, delimiter=delimiter)
-    writer.writeheader()
+    for data in datas:
+        columns = data.get("columns")
+        if columns is None or len(columns) == 0:
+            continue
 
-    for row in query_data["rows"]:
-        for col_name, converter in special_columns.items():
-            if col_name in row:
-                row[col_name] = converter(row[col_name])
+        fieldnames, special_columns = _get_column_lists(data["columns"] or [])
 
-        writer.writerow(row)
+        writer = csv.DictWriter(s, extrasaction="ignore", fieldnames=fieldnames, delimiter=delimiter)
+        writer.writeheader()
+
+        for row in data["rows"]:
+            for col_name, converter in special_columns.items():
+                if col_name in row:
+                    row[col_name] = converter(row[col_name])
+
+            writer.writerow(row)
 
     return s.getvalue()
 
