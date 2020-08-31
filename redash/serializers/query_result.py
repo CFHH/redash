@@ -8,25 +8,6 @@ from redash.query_runner import TYPE_BOOLEAN, TYPE_DATE, TYPE_DATETIME
 from redash.authentication.org_resolving import current_org
 
 
-Encoding = 'gbk' #utf-8-sig
-class UnicodeWriter:
-    def __init__(self, stream, dialect = csv.excel, encoding = Encoding, **kwds):
-        self.stream = stream
-        self.encoding = encoding
-        self.encoder = codecs.getincrementalencoder(encoding)()
-        self.buff = StringIO()
-        self.writer = csv.writer(self.buff, dialect = dialect, **kwds)
-
-    def writerow(self, row):
-        self.writer.writerow(row)
-        data = self.buff.getvalue()
-        data = self.encoder.encode(data)
-        data = str(data, encoding = self.encoding)
-        self.stream.write(data)
-        self.buff.truncate(0)
-        self.buff.seek(0)
-
-
 def _convert_format(fmt):
     return (
         fmt.replace("DD", "%d")

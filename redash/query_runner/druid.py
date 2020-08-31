@@ -332,6 +332,7 @@ class Druid(BaseQueryRunner):
         '''
         例子1，子查询是个sql：
 X{
+    "store_to_db": false,
     "tables": [
     {
         "table_name": "tablea",
@@ -349,10 +350,14 @@ X{
     ],
     "main_query": "SQLITE:SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb",
     "final_sql": "SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb",
+    "persist_table_name": "some_long_name_table_1",
+    "persist_datetime_column": "daytime",
     "sub_queries":[
     {
         "name": "exdata1",
-        "query":"SQLITE:SELECT daytime, PV_SRC_GEO_LOCATION, click, cost FROM tableb"
+        "query":"SQLITE:SELECT daytime, click, cost FROM tablea",
+        "persist_table_name": "some_long_name_table_2",
+        "persist_datetime_column": "daytime"
     }
     ]
 }
@@ -407,7 +412,7 @@ X{
             }
     }
     ],
-    "final_sql": "SELECT * FROM tablea;"
+    "main_query": "SQLITE:SELECT * FROM tablea"
 }
         '''
         error = None
@@ -422,12 +427,19 @@ X{
         if error is not None:
             raise CustomException(error)
 
+        #store_to_db: 查询结果是否保存为sqlite的表，如果是，后续还得指定persist_table_name
+        #   不需要可以不填，默认是False
+        store_to_db = input_obj.get("store_to_db")
+        if store_to_db is None:
+            store_to_db = False
+        #tables: 一系列辅助查询的过渡表，顺序执行，后续的表可以以来前面的表
+        #   不需要可以不填
         tables = input_obj.get("tables")
-        main_query = input_obj.get("main_query")
-        final_sqlite_query = input_obj.get("final_sql")
-        sub_queries = input_obj.get("sub_queries")
         if (tables is not None) and (type(tables).__name__ !="list"):
             raise CustomException("Incorrect Json data: tables must be a list.")
+        #main_query: 主查询，查询结果存放在query_result["data"]中
+        #   不需要可以不填
+        main_query = input_obj.get("main_query")
         if main_query is not None:
             if type(main_query).__name__ =="str":
                 pass
@@ -435,12 +447,30 @@ X{
                 main_query = json_dumps(main_query)
             else:
                 raise CustomException("Incorrect Json data: main_query must be a string or json format.")
+        #final_sql: 兼容，也是主查询，但只能从SQLITE中查结果；在有main_query的情况下，此项无效
+        #   不需要可以不填
+        final_sqlite_query = input_obj.get("final_sql")
         if (final_sqlite_query is not None) and (type(final_sqlite_query).__name__ !="str"):
             raise CustomException("Incorrect Json data: final_sql must be a string.")
+        #persist_table_name: store_to_db为true的情况下，保存主查询数据的表名
+        #persist_datetime_column: 查询结果中的时间项
+        #   不需要可以不填
+        persist_table_name = None
+        persist_datetime_column = None
+        if store_to_db:
+            persist_table_name = input_obj.get("persist_table_name")
+            if persist_table_name is None or type(persist_table_name).__name__ !="str":
+                raise CustomException("Incorrect Json data: persist_table_name for main query must be a string.")
+            persist_datetime_column = input_obj.get("persist_datetime_column")
+            if persist_datetime_column is not None and type(persist_datetime_column).__name__ !="str":
+                raise CustomException("Incorrect Json data: persist_datetime_column for main query must be a string.")
+        #sub_queries: 子查询，查询结果存放在query_result["data_ex"]中
+        #   不需要可以不填
+        sub_queries = input_obj.get("sub_queries")
         if (sub_queries is not None) and (type(sub_queries).__name__ !="list"):
             raise CustomException("Incorrect Json data: sub_queries must be a string.")
 
-        #对表名的随机化
+        #对tables中的临时表名的随机化
         table_name_map = {}
         #创建sqlite
         sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
@@ -450,6 +480,7 @@ X{
             #一、依次处理单个表
             if tables is not None:
                 for table_cofig in tables:
+                    #json配置
                     name = table_cofig.get("table_name")
                     if (name is None) or (type(name).__name__ !="str"):
                         raise CustomException("Incorrect Json data: table_name can't be none and must be a string.")
@@ -457,66 +488,28 @@ X{
                     datetime_column = table_cofig.get("datetime_column")
                     if (datetime_column is not None) and (type(datetime_column).__name__ !="str"):
                         raise CustomException("Incorrect Json data in table %s: datetime_column must be a string." % name)
-                    sub_query = table_cofig.get("query")
-                    if sub_query is None:
+                    table_query = table_cofig.get("query")
+                    if table_query is None:
                         raise CustomException("Incorrect Json data in table %s: query must exist." % name)
-                    if type(sub_query).__name__ =="str":
+                    if type(table_query).__name__ =="str":
                         pass
-                    elif type(sub_query).__name__ =="dict":
-                        sub_query = json_dumps(sub_query)
+                    elif type(table_query).__name__ =="dict":
+                        table_query = json_dumps(table_query)
                     else:
                         raise CustomException("Incorrect Json data in table %s: query must be a string or json format." % name)
-                    query_data, query_error = self.run_query_obj_result(sub_query, user, sqlite_query_param)
+                    #查询
+                    query_data, query_error = self.run_query_obj_result(table_query, user, sqlite_query_param)
                     if query_error is not None:
                         raise CustomException(query_error)
                     if (query_data is None) or query_data.get("columns") is None:
                         raise CustomException("Incorrect query data for table %s." % name)
-
-                    #创建表
+                    #存储
                     if len(query_data["columns"]) == 0:
                         continue
                     rand_num = random.randint(100000,999999)
                     table_name = name + str(rand_num)
                     table_name_map[name] = table_name
-                    create_table_sql = "CREATE TABLE " + table_name + "("
-                    colume_index = 0
-                    for colume in query_data["columns"]:
-                        if colume["name"] == datetime_column:
-                            type_str = "DATETIME"
-                        else:
-                            type_str = SQLITE_TYPES_MAP.get(colume["type"])
-                            if type_str is None:
-                                type_str = "TEXT"
-                        if colume_index != 0:
-                            create_table_sql = create_table_sql + ", "
-                        colume_index += 1
-                        create_table_sql = create_table_sql + colume["name"] + " " + type_str
-                    create_table_sql = create_table_sql + ");"
-                    self._log_info(create_table_sql)
-                    sqlite_cursor.execute(create_table_sql)
-
-                    #插入数据
-                    row_index = 0
-                    for row in query_data["rows"]:
-                        insert_sql = "INSERT INTO " + table_name + " VALUES("
-                        colume_index = 0
-                        for colume in query_data["columns"]:
-                            if colume_index != 0:
-                                insert_sql = insert_sql + ", "
-                            colume_index += 1
-                            value = row[colume["name"]]
-                            if colume["type"] == "string":
-                                value = "\"" + value + "\""
-                            else:
-                                value = str(value)
-                            insert_sql = insert_sql + value
-                        insert_sql = insert_sql + ");"
-                        if row_index == 0:
-                            self._log_info(insert_sql)
-                        sqlite_cursor.execute(insert_sql)
-                        row_index += 1
-                    #提交：不然接下来的别的Cursor可能查不到更新的数据
-                    sqlite_connection.commit()
+                    self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, table_name, datetime_column, drop_before_create = False)
             else:
                 pass
 
@@ -529,7 +522,6 @@ X{
                 if (json_data is None) or json_data.get("columns") is None:
                     raise CustomException("Incorrect query_data for main query.")
             elif final_sqlite_query is not None:
-                #直接旧的
                 for (k,v) in table_name_map.items():
                     final_sqlite_query = final_sqlite_query.replace(k, v)
                 self._log_info("Processing Final SQL:#####%s#####" % final_sqlite_query)
@@ -556,11 +548,17 @@ X{
             else:
                 json_data = {"columns": [], "rows": []}
                 error = None
+            #存储
+            if store_to_db and error is None and len(json_data["columns"]) > 0:
+                self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, json_data, persist_table_name, persist_datetime_column, drop_before_create = True)
+                json_data = {"columns": [], "rows": []}
+
 
             #三、执行子查询
             if sub_queries is not None:
                 json_data["data_ex"] = []
                 for query_config in sub_queries:
+                    #json配置
                     name = query_config.get("name")
                     if (name is None) or (type(name).__name__ !="str"):
                         raise CustomException("Incorrect Json data in sub_queries: name must be exist and must be a string.")
@@ -573,13 +571,28 @@ X{
                         sub_query = json_dumps(sub_query)
                     else:
                         raise CustomException("Incorrect Json data in sub_query %s: query must be a string or json format." % name)
+                    sub_persist_table_name = None
+                    sub_persist_datetime_column = None
+                    if store_to_db:
+                        sub_persist_table_name = query_config.get("persist_table_name")
+                        if sub_persist_table_name is None or type(sub_persist_table_name).__name__ !="str":
+                            raise CustomException("Incorrect Json data in sub_query %s: persist_table_name must be a string." % name)
+                        sub_persist_datetime_column = query_config.get("persist_datetime_column")
+                        if sub_persist_datetime_column is not None and type(sub_persist_datetime_column).__name__ !="str":
+                            raise CustomException("Incorrect Json data in sub_query %s: persist_datetime_column must be a string." % name)
+                    #查询
                     self._log_info("Processing Sub Query:#####%s#####" % sub_query)
                     query_data, query_error = self.run_query_obj_result(sub_query, user, sqlite_query_param)
                     if query_error is not None:
                         raise CustomException(query_error)
                     if (query_data is None) or query_data.get("columns") is None:
                         raise CustomException("Incorrect query data for sub query %s." % name)
-                    json_data["data_ex"].append({"name": name, "data": query_data})
+                    #存储
+                    if store_to_db:
+                        if query_error is None and len(query_data["columns"]) > 0:
+                            self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, sub_persist_table_name, sub_persist_datetime_column, drop_before_create = True)
+                    else:
+                        json_data["data_ex"].append({"name": name, "data": query_data})
 
         except CustomException as e:
             error = e.read()
@@ -596,11 +609,59 @@ X{
                 drop_table_sql = "DROP TABLE IF EXISTS " + v + ";"
                 self._log_info(drop_table_sql)
                 sqlite_cursor.execute(drop_table_sql)
+            sqlite_connection.commit()
             sqlite_connection.close()
 
         if error is not None:
             raise CustomException(error)
         return json_data, error
+
+    def store_data_to_sqlite(self, sqlite_connection, sqlite_cursor, query_data, table_name, datetime_column, drop_before_create = False):
+        #删表
+        if drop_before_create:
+            drop_table_sql = "DROP TABLE IF EXISTS " + table_name + ";"
+            self._log_info(drop_table_sql)
+            sqlite_cursor.execute(drop_table_sql)
+            sqlite_connection.commit()
+        #创建表
+        create_table_sql = "CREATE TABLE " + table_name + "("
+        colume_index = 0
+        for colume in query_data["columns"]:
+            if colume["name"] == datetime_column:
+                type_str = "DATETIME"
+            else:
+                type_str = SQLITE_TYPES_MAP.get(colume["type"])
+                if type_str is None:
+                    type_str = "TEXT"
+            if colume_index != 0:
+                create_table_sql = create_table_sql + ", "
+            colume_index += 1
+            create_table_sql = create_table_sql + colume["name"] + " " + type_str
+        create_table_sql = create_table_sql + ");"
+        self._log_info(create_table_sql)
+        sqlite_cursor.execute(create_table_sql)
+        #插入数据
+        row_index = 0
+        for row in query_data["rows"]:
+            insert_sql = "INSERT INTO " + table_name + " VALUES("
+            colume_index = 0
+            for colume in query_data["columns"]:
+                if colume_index != 0:
+                    insert_sql = insert_sql + ", "
+                colume_index += 1
+                value = row[colume["name"]]
+                if colume["type"] == "string":
+                    value = "\"" + value + "\""
+                else:
+                    value = str(value)
+                insert_sql = insert_sql + value
+            insert_sql = insert_sql + ");"
+            if row_index == 0:
+                self._log_info(insert_sql)
+            sqlite_cursor.execute(insert_sql)
+            row_index += 1
+        #提交：不然接下来的别的Cursor可能查不到更新的数据
+        sqlite_connection.commit()
 
     def run_sqlite_query(self, querystr, sqlite_query_param):
         tables = []
