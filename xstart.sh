@@ -13,3 +13,13 @@ redis-cli -h localhost -p 6379 flushall
 ./manage.py rq worker queries &
 ./manage.py rq worker queries &
 ./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
+./manage.py rq worker queries &
