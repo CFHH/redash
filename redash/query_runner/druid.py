@@ -27,12 +27,17 @@ QueryMode = enum(
 QUERY_MODE_SQLITE_PREFIX = "SQLITE:"
 
 import sqlite3
+import re
 import random
 
 #import logging
 #logger = logging.getLogger("druid")
 from redash.worker import get_job_logger
 logger = get_job_logger(__name__)
+
+
+#从SQL中找出 CREATE TABLE 后面的表名
+TABLE_NAME_TO_CREATE_REG = re.compile("\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(\w+)[\s\(]", flags=re.I)
 
 
 class CustomException(Exception):
@@ -519,6 +524,12 @@ X{
                         for proc in nodata_procs:
                             if type(proc).__name__ !="str":
                                 raise CustomException("Incorrect Json data in table %s: nodata_procs must be a string list." % name)
+                            m = TABLE_NAME_TO_CREATE_REG.findall(proc)
+                            if m:
+                                if len(m) > 1:
+                                    raise CustomException("[nodata_procs]Too many tables to be created in table %s." % name)
+                                if m[0][1] != name:
+                                    raise CustomException("[nodata_procs]Invalid table name in table %s." % name)
                             query_data, query_error = self.run_query_obj_result(proc, user, sqlite_query_param)
                             if query_error is not None:
                                 raise CustomException(query_error)
