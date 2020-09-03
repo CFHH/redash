@@ -16,17 +16,16 @@ TYPES_MAP = {1: TYPE_STRING, 2: TYPE_INTEGER, 3: TYPE_BOOLEAN}
 PYTHON_TYPES_MAP = {"str": TYPE_STRING, "int": TYPE_INTEGER, "bool": TYPE_BOOLEAN, "float": TYPE_FLOAT}
 SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "NUMERIC"}
 
-QUERY_MODE_SQL = 1      #向druid发起sql查询
-QUERY_MODE_NATIVE = 2   #向druid发起json格式的查询
-QUERY_MODE_SQLITE = 3   #向临时SQLITE的查新
-QUERY_MODE_CUSTOM = 9   #自定义，总和模式
+def enum(name, *sequential, **named):
+    values = dict(zip(sequential, range(len(sequential))), **named)
+    return type(str(name), (), values)
 
 QueryMode = enum(
     'QueryMode',
-    DRUID_SQL='DruidSql',
-    DRUID_JSON='DruidJson',
-    SQLITE='Sqlite',
-    CUSTOM='Custom'
+    DRUID_SQL='DruidSql',       #基本查询：向druid发起sql查询，带不带context两种方式
+    DRUID_JSON='DruidJson',     #基本查询：向druid发起原生json格式的查询
+    SQLITE='Sqlite',            #基本查询：向sqlite发起查询
+    CUSTOM='Custom'             #复杂查询
 )
 
 QUERY_MODE_SQLITE_PREFIX = "SQLITE:"
@@ -154,18 +153,18 @@ class Druid(BaseQueryRunner):
         '''
         querystr = self.remove_comments(query)
         query_mode, query_obj = self.get_query_mode(querystr)
-        self._log_info("query=#####%s#####, mode=%d" % (querystr, query_mode))
+        self._log_info("query=#####%s#####, mode=%s" % (querystr, query_mode))
 
-        if query_mode == QUERY_MODE_SQL:
+        if query_mode == QueryMode.DRUID_SQL:
             if query_obj is not None:
                 querystr = query_obj["sql"]
                 context = query_obj["context"]
             else:
                 context = {}
             json_data, error = self.run_sql_query(querystr, context, user)
-        elif query_mode == QUERY_MODE_NATIVE:
+        elif query_mode == QueryMode.DRUID_JSON:
             json_data, error = self.run_native_query(querystr, user)
-        elif query_mode == QUERY_MODE_SQLITE:
+        elif query_mode == QueryMode.SQLITE:
             json_data, error = self.run_sqlite_query(querystr, sqlite_query_param)
         else:
             json_data, error = self.run_custom_query(querystr, user)
@@ -194,26 +193,20 @@ class Druid(BaseQueryRunner):
         return querystr
 
     def get_query_mode(self, querystr):
-        '''
-        三种模式:
-        1、SQL: QUERY_MODE_SQL
-        2、JSON: QUERY_MODE_NATIVE
-        3、自定义: QUERY_MODE_CUSTOM
-        '''
         first_char = querystr[0]
 
         if first_char == "{":
             query_obj = json_loads(querystr)
             if query_obj.get("context") != None and query_obj.get("sql") != None:
-                return QUERY_MODE_SQL, query_obj
+                return QueryMode.DRUID_SQL, query_obj
             else:
-                return QUERY_MODE_NATIVE, None
+                return QueryMode.DRUID_JSON, None
         elif first_char == "X":
-            return QUERY_MODE_CUSTOM, None
+            return QueryMode.CUSTOM, None
         elif querystr.find(QUERY_MODE_SQLITE_PREFIX) == 0:
-            return QUERY_MODE_SQLITE, None
+            return QueryMode.SQLITE, None
         else:
-            return QUERY_MODE_SQL, None
+            return QueryMode.DRUID_SQL, None
 
     def run_sql_query(self, query, context, user):
         #context = {"useApproximateCountDistinct": False}
