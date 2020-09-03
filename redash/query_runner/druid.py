@@ -36,8 +36,11 @@ from redash.worker import get_job_logger
 logger = get_job_logger(__name__)
 
 
-#从SQL中找出 CREATE TABLE 后面的表名
-TABLE_NAME_TO_CREATE_REG = re.compile("\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(\w+)[\s\(]", flags=re.I)
+#用于判断是否是创建表的SQL语句
+CREATE_TABLE_SQL_REG = re.compile("(\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(IF\s+NOT\s+EXISTS\s+)?)", flags=re.I)
+#用于从SQL语句中找出 CREATE TABLE 后面的表名
+TABLE_NAME_TO_CREATE_REG = re.compile("\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(IF\s+NOT\s+EXISTS\s+)?(\w+)[\s\(]", flags=re.I)
+REG_MATCH_TABLE_NAME_INDEX = 2
 
 
 class CustomException(Exception):
@@ -481,7 +484,7 @@ X{
         #创建sqlite
         sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
         sqlite_cursor = sqlite_connection.cursor()
-        sqlite_query_param = {"table_name_map": table_name_map}
+        sqlite_query_param = {"table_name_map": table_name_map, "can_create_table": False}
         try:
             #一、依次处理单个表
             if tables is not None:
@@ -521,6 +524,7 @@ X{
                     #查询返回无数据的处理
                     elif nodata_procs is not None:
                         self._log_info("Using nodata_procs to build table: %s." % name)
+                        sqlite_query_param["can_create_table"] = True
                         for proc in nodata_procs:
                             if type(proc).__name__ !="str":
                                 raise CustomException("Incorrect Json data in table %s: nodata_procs must be a string list." % name)
@@ -528,11 +532,12 @@ X{
                             if m:
                                 if len(m) > 1:
                                     raise CustomException("[nodata_procs]Too many tables to be created in table %s." % name)
-                                if m[0][1] != name:
+                                if m[0][REG_MATCH_TABLE_NAME_INDEX] != name:
                                     raise CustomException("[nodata_procs]Invalid table name in table %s." % name)
                             query_data, query_error = self.run_query_obj_result(proc, user, sqlite_query_param)
                             if query_error is not None:
                                 raise CustomException(query_error)
+                        sqlite_query_param["can_create_table"] = False
             else:
                 pass
 
@@ -699,6 +704,19 @@ X{
 
         error = None
         json_data = None
+
+        can_create_table = sqlite_query_param.get("can_create_table")
+        if not can_create_table:
+            m = TABLE_NAME_TO_CREATE_REG.findall(querystr)
+            if m:
+                table_name = m[0][REG_MATCH_TABLE_NAME_INDEX]
+                raise CustomException("No permission to create table %s!" % table_name)
+            '''
+            m = CREATE_TABLE_SQL_REG.findall(querystr)
+            if m:
+                raise CustomException("No permission to create table!")
+            '''
+
         sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
         sqlite_cursor = sqlite_connection.cursor()
         try:
