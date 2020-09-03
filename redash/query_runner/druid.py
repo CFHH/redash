@@ -18,8 +18,16 @@ SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "N
 
 QUERY_MODE_SQL = 1      #向druid发起sql查询
 QUERY_MODE_NATIVE = 2   #向druid发起json格式的查询
-QUERY_MODE_CUSTOM = 3   #自定义，总和模式
-QUERY_MODE_SQLITE = 4   #向临时SQLITE的查新
+QUERY_MODE_SQLITE = 3   #向临时SQLITE的查新
+QUERY_MODE_CUSTOM = 9   #自定义，总和模式
+
+QueryMode = enum(
+    'QueryMode',
+    DRUID_SQL='DruidSql',
+    DRUID_JSON='DruidJson',
+    SQLITE='Sqlite',
+    CUSTOM='Custom'
+)
 
 QUERY_MODE_SQLITE_PREFIX = "SQLITE:"
 
@@ -99,7 +107,7 @@ class Druid(BaseQueryRunner):
         )
 
     def run_query(self, query, user):
-        json_data, error = self.run_query_obj_result(query, user, {})
+        json_data, error = self.run_query_obj_result(query, user, sqlite_query_param={})
         if error is not None:
             self._log_error(error)
 
@@ -340,7 +348,11 @@ X{
         "query": {
             "context": {"useApproximateCountDistinct": false},
             "sql": "SELECT DATE_TRUNC('day', __time) as daytime,PV_SRC_GEO_LOCATION,sum(AD_CLICK_COUNT) as click, sum(AD_CLICK_COUNT*KW_AVG_COST) as cost FROM travels_demo where EVENT_TYPE='被展现'  group by PV_SRC_GEO_LOCATION,DATE_TRUNC('day', __time) order by daytime"
-        }
+        },
+        "nodata_procs": [
+        "SQLITE:CREATE TABLE tablea (daytime DATETIME, PV_SRC_GEO_LOCATION TEXT, click INTEGER, cost NUMERIC)",
+        "SQLITE:INSERT INTO tablea VALUES('2020-01-01T00:00:00.000Z', 'CHINA', 252, 848.74)"
+        ]
     },
     {
         "table_name": "tableb",
@@ -497,6 +509,9 @@ X{
                         table_query = json_dumps(table_query)
                     else:
                         raise CustomException("Incorrect Json data in table %s: query must be a string or json format." % name)
+                    nodata_procs = table_cofig.get("nodata_procs")
+                    if (nodata_procs is not None) and (type(nodata_procs).__name__ !="list"):
+                        raise CustomException("Incorrect Json data in table %s: nodata_procs must be a list." % name)
                     #查询
                     query_data, query_error = self.run_query_obj_result(table_query, user, sqlite_query_param)
                     if query_error is not None:
@@ -504,12 +519,20 @@ X{
                     if (query_data is None) or query_data.get("columns") is None:
                         raise CustomException("Incorrect query data for table %s." % name)
                     #存储
-                    if len(query_data["columns"]) == 0:
-                        continue
                     rand_num = random.randint(100000,999999)
                     table_name = name + str(rand_num)
                     table_name_map[name] = table_name
-                    self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, table_name, datetime_column, drop_before_create = False)
+                    if len(query_data["columns"]) > 0:
+                        self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, table_name, datetime_column, drop_before_create = False)
+                    #查询返回无数据的处理
+                    elif nodata_procs is not None:
+                        self._log_info("Using nodata_procs to build table: %s." % name)
+                        for proc in nodata_procs:
+                            if type(proc).__name__ !="str":
+                                raise CustomException("Incorrect Json data in table %s: nodata_procs must be a string list." % name)
+                            query_data, query_error = self.run_query_obj_result(proc, user, sqlite_query_param)
+                            if query_error is not None:
+                                raise CustomException(query_error)
             else:
                 pass
 
@@ -543,8 +566,10 @@ X{
                             )
                     json_data = {"columns": columns, "rows": rows}
                 else:
-                    error = "Query completed but it returned no data."
-                    json_data = None
+                    #error = "Query completed but it returned no data."
+                    #json_data = None
+                    error = None
+                    json_data = {"columns": [], "rows": []}
             else:
                 json_data = {"columns": [], "rows": []}
                 error = None
@@ -670,6 +695,7 @@ X{
         if table_name_map is not None:
             for (k,v) in table_name_map.items():
                 querystr = querystr.replace(k, v)
+            self._log_info(querystr)
 
         error = None
         json_data = None
@@ -677,6 +703,7 @@ X{
         sqlite_cursor = sqlite_connection.cursor()
         try:
             sqlite_cursor.execute(querystr)
+            sqlite_connection.commit()
             if sqlite_cursor.description is not None:
                 columns = self.fetch_columns([(i[0], None) for i in sqlite_cursor.description])
                 rows = [
@@ -695,8 +722,10 @@ X{
                     self._log_warning("run_sqlite_query, NO DATA IN rows")
                 json_data = {"columns": columns, "rows": rows}
             else:
-                error = "Query completed but it returned no data."
-                json_data = None
+                #error = "Query completed but it returned no data."
+                #json_data = None
+                error = None
+                json_data = {"columns": [], "rows": []}
         except Exception as e:
             error = str(e)
             #sqlite_connection.cancel()
