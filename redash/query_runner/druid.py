@@ -173,9 +173,6 @@ class Druid(BaseQueryRunner):
         else:
             json_data, error = self.run_custom_query(querystr, user)
 
-        if error is not None:
-            self._log_info("run_query error=%s" % error)
-
         return json_data, error
 
     def remove_comments(self, querystr):
