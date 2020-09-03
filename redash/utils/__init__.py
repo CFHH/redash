@@ -26,6 +26,12 @@ WRITER_ENCODING = os.environ.get("REDASH_CSV_WRITER_ENCODING", "utf-8")
 WRITER_ERRORS = os.environ.get("REDASH_CSV_WRITER_ERRORS", "strict")
 
 
+def enum(name, *sequential, **named):
+    #抄自 rq.job
+    values = dict(zip(sequential, range(len(sequential))), **named)
+    return type(str(name), (), values)
+
+
 def utcnow():
     """Return datetime.now value with timezone specified.
 

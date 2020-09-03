@@ -7,7 +7,7 @@ except ImportError:
 
 from redash.query_runner import BaseQueryRunner, register, JobTimeoutException
 from redash.query_runner import TYPE_STRING, TYPE_INTEGER, TYPE_BOOLEAN, TYPE_FLOAT
-from redash.utils import json_dumps, json_loads
+from redash.utils import enum, json_dumps, json_loads
 
 from six.moves import urllib
 from base64 import b64encode
@@ -15,10 +15,6 @@ from base64 import b64encode
 TYPES_MAP = {1: TYPE_STRING, 2: TYPE_INTEGER, 3: TYPE_BOOLEAN}
 PYTHON_TYPES_MAP = {"str": TYPE_STRING, "int": TYPE_INTEGER, "bool": TYPE_BOOLEAN, "float": TYPE_FLOAT}
 SQLITE_TYPES_MAP = {TYPE_STRING: "TEXT", TYPE_INTEGER: "INTEGER", TYPE_FLOAT: "NUMERIC"}
-
-def enum(name, *sequential, **named):
-    values = dict(zip(sequential, range(len(sequential))), **named)
-    return type(str(name), (), values)
 
 QueryMode = enum(
     'QueryMode',
