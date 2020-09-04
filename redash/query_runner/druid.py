@@ -41,6 +41,8 @@ CREATE_TABLE_SQL_REG = re.compile("(\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(IF\s+NOT
 #用于从SQL语句中找出 CREATE TABLE 后面的表名
 TABLE_NAME_TO_CREATE_REG = re.compile("\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(IF\s+NOT\s+EXISTS\s+)?(\w+)[\s\(]", flags=re.I)
 REG_MATCH_TABLE_NAME_INDEX = 2
+#其他禁止行为：DATABASE、ALTER、RENAME
+FORBIDDEN_SQL_REG = re.compile("(\s+DATABASE\s+)|((\s+|:{1})(ALTER|RENAME)\s+)", flags=re.I)
 
 
 class CustomException(Exception):
@@ -716,6 +718,9 @@ X{
             if m:
                 raise CustomException("No permission to create table!")
             '''
+        m = FORBIDDEN_SQL_REG.findall(querystr)
+        if m:
+            raise CustomException("No permission to %s %s!" % (m[0][0], m[0][3]))
 
         sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
         sqlite_cursor = sqlite_connection.cursor()
