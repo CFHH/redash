@@ -35,14 +35,47 @@ import random
 from redash.worker import get_job_logger
 logger = get_job_logger(__name__)
 
+#表名转换
+def ReplaceTableName(querystr, old_name, new_name):
+    '''
+    #return querystr.replace(old_name, new_name)
+    TABLE_NAME_REPL_REG = "(\s|\))(TABLE_NAME)(\s|\(|$)"
+    正则替换时，索引0是整体，接下来是按次序出现的每个(，这里保留1和3，把2换掉
+    '''
+    pattern = "(\s|\))(" + old_name + ")(\s|\(|$)"
+    return re.sub(pattern, lambda x:x.group(1) + new_name + x.group(3), querystr, flags=re.I)
 
-#用于判断是否是创建表的SQL语句
+#判断是否是创建表的SQL语句
 CREATE_TABLE_SQL_REG = re.compile("(\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(IF\s+NOT\s+EXISTS\s+)?)", flags=re.I)
-#用于从SQL语句中找出 CREATE TABLE 后面的表名
+def IsCreateTableSql(querystr):
+    m = CREATE_TABLE_SQL_REG.findall(querystr)
+    if m:
+        return True
+    else:
+        return False
+
+#找出CREATE TABLE语句中的表名
 TABLE_NAME_TO_CREATE_REG = re.compile("\s*CREATE\s+(TEMPORARY\s+)*TABLE\s+(IF\s+NOT\s+EXISTS\s+)?(\w+)[\s\(]", flags=re.I)
 REG_MATCH_TABLE_NAME_INDEX = 2
-#其他禁止行为：DATABASE、ALTER、RENAME
-FORBIDDEN_SQL_REG = re.compile("(\s+DATABASE\s+)|((\s+|:{1})(ALTER|RENAME)\s+)", flags=re.I)
+def GetTableNameToCreate(querystr):
+    m = TABLE_NAME_TO_CREATE_REG.findall(querystr)
+    if m:
+        tabel_name = ''
+        for i in range(0, len(m)):
+            tabel_name = tabel_name + m[i][2]
+        return tabel_name
+    else:
+        return None
+
+#禁止执行的SQL行为：DATABASE、ALTER、RENAME
+FORBIDDEN_SQL_REG = re.compile("(\s+(DATABASE)\s+)|((\s+|:{1}|^)(ALTER|RENAME)\s+)", flags=re.I)
+def CheckForbiddenSql(querystr):
+    m = FORBIDDEN_SQL_REG.findall(querystr)
+    if m:
+        forbidden_part = "%s%s" % (m[0][1], m[0][4])
+        return forbidden_part
+    else:
+        return None
 
 
 class CustomException(Exception):
@@ -530,12 +563,9 @@ X{
                         for proc in nodata_procs:
                             if type(proc).__name__ !="str":
                                 raise CustomException("Incorrect Json data in table %s: nodata_procs must be a string list." % name)
-                            m = TABLE_NAME_TO_CREATE_REG.findall(proc)
-                            if m:
-                                if len(m) > 1:
-                                    raise CustomException("[nodata_procs]Too many tables to be created in table %s." % name)
-                                if m[0][REG_MATCH_TABLE_NAME_INDEX] != name:
-                                    raise CustomException("[nodata_procs]Invalid table name in table %s." % name)
+                            t = GetTableNameToCreate(proc)
+                            if t is not None and t != name:
+                                raise CustomException("[nodata_procs]Invalid table name(%s) to create in table %s." % (t, name))
                             query_data, query_error = self.run_query_obj_result(proc, user, sqlite_query_param)
                             if query_error is not None:
                                 raise CustomException(query_error)
@@ -553,7 +583,7 @@ X{
                     raise CustomException("Incorrect query_data for main query.")
             elif final_sqlite_query is not None:
                 for (k,v) in table_name_map.items():
-                    final_sqlite_query = final_sqlite_query.replace(k, v)
+                    final_sqlite_query = ReplaceTableName(final_sqlite_query, k, v)
                 self._log_info("Processing Final SQL:#####%s#####" % final_sqlite_query)
                 sqlite_cursor.execute(final_sqlite_query)
                 if sqlite_cursor.description is not None:
@@ -701,7 +731,7 @@ X{
         table_name_map = sqlite_query_param.get("table_name_map")
         if table_name_map is not None:
             for (k,v) in table_name_map.items():
-                querystr = querystr.replace(k, v)
+                querystr = ReplaceTableName(querystr, k, v)
             self._log_info(querystr)
 
         error = None
@@ -709,18 +739,12 @@ X{
 
         can_create_table = sqlite_query_param.get("can_create_table")
         if not can_create_table:
-            m = TABLE_NAME_TO_CREATE_REG.findall(querystr)
-            if m:
-                table_name = m[0][REG_MATCH_TABLE_NAME_INDEX]
+            table_name = GetTableNameToCreate(querystr)
+            if table_name is not None:
                 raise CustomException("No permission to create table %s!" % table_name)
-            '''
-            m = CREATE_TABLE_SQL_REG.findall(querystr)
-            if m:
-                raise CustomException("No permission to create table!")
-            '''
-        m = FORBIDDEN_SQL_REG.findall(querystr)
-        if m:
-            raise CustomException("No permission to %s %s!" % (m[0][0], m[0][3]))
+        forbidden_part = CheckForbiddenSql(querystr)
+        if forbidden_part is not None:
+            raise CustomException("No permission to %s " % forbidden_part)
 
         sqlite_connection = sqlite3.connect(self.sqlite_dbpath)
         sqlite_cursor = sqlite_connection.cursor()
