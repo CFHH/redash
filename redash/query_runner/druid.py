@@ -77,6 +77,9 @@ def CheckForbiddenSql(querystr):
     else:
         return None
 
+#删除注释(/**/)
+COMMENT_REG = re.compile("(/\*([\S\s]*?)\*/)")
+
 
 class CustomException(Exception):
     def __init__(self, info):
@@ -228,11 +231,9 @@ class Druid(BaseQueryRunner):
             index = querystr.find("*/")
             comment = querystr[2:index]
             self.metadata = json_loads(comment)
-            index += 2
-            for i in range(index, len(querystr)):
-                if querystr[i] != " ":
-                    querystr = querystr[i:]
-                    break
+            querystr = querystr[index+2:]
+        querystr = COMMENT_REG.sub(" ", querystr)
+        querystr = querystr.strip()
         return querystr
 
     def get_query_mode(self, querystr):
