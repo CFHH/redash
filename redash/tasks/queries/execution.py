@@ -15,8 +15,9 @@ from redash.tasks.failure_report import track_failure
 from redash.utils import gen_query_hash, json_dumps, utcnow
 from redash.worker import get_job_logger
 
-logger = get_job_logger(__name__)
 TIMEOUT_MESSAGE = "Query exceeded Redash query execution time limit."
+def get_logger():
+    return get_job_logger(__name__)
 
 
 def _job_lock_id(query_hash, data_source_id):
@@ -32,7 +33,7 @@ def enqueue_query(
 ):
     query_id = metadata.get("Query ID", "unknown")
     query_hash = gen_query_hash(query)
-    logger.info("[query_id=%s] [query_hash=%s] Inserting job", query_id, query_hash)
+    get_logger().info("[query_id=%s] [query_hash=%s] Inserting job", query_id, query_hash)
     try_count = 0
     job = None
 
@@ -59,10 +60,10 @@ def enqueue_query(
                     job_exists = False
                     job_status = "EXPIRED"
 
-                logger.info("[query_id=%s] [query_hash=%s] Found existing job [job.id=%s] [job_status=%s] [job_cancelled=%s]", query_id, query_hash, job_id, job_status, job_cancelled)
+                get_logger().info("[query_id=%s] [query_hash=%s] Found existing job [job.id=%s] [job_status=%s] [job_cancelled=%s]", query_id, query_hash, job_id, job_status, job_cancelled)
 
                 if job_complete or (not job_exists):
-                    #logger.info("[query_id=%s] [query_hash=%s] [job.id=%s], removing redis lock", query_id, query_hash, job_id)
+                    #get_logger().info("[query_id=%s] [query_hash=%s] [job.id=%s], removing redis lock", query_id, query_hash, job_id)
                     redis_connection.delete(_job_lock_id(query_hash, data_source.id))
                     job = None
 
@@ -104,7 +105,7 @@ def enqueue_query(
                     execute_query, query, data_source.id, metadata, **enqueue_kwargs
                 )
 
-                logger.info("[query_id=%s] [query_hash=%s] Created new job [job.id=%s]", query_id, query_hash, job.id)
+                get_logger().info("[query_id=%s] [query_hash=%s] Created new job [job.id=%s]", query_id, query_hash, job.id)
                 pipe.set(
                     _job_lock_id(query_hash, data_source.id),
                     job.id,
@@ -114,11 +115,11 @@ def enqueue_query(
             break
 
         except redis.WatchError:
-            logger.error("[query_id=%s] [query_hash=%s] redis.WatchError, try_count = %d", query_id, query_hash, try_count)
+            get_logger().error("[query_id=%s] [query_hash=%s] redis.WatchError, try_count = %d", query_id, query_hash, try_count)
             continue
 
     if not job:
-        logger.error("[Manager] [query_id=%s] [query_hash=%s] Failed adding job for query.", query_id, query_hash)
+        get_logger().error("[Manager] [query_id=%s] [query_hash=%s] Failed adding job for query.", query_id, query_hash)
 
     return job
 
@@ -188,7 +189,7 @@ class QueryExecutor(object):
                 error = str(e)
 
             data = None
-            #logger.warning("Unexpected error while running query:", exc_info=1)
+            #get_logger().warning("Unexpected error while running query:", exc_info=1)
             run_time = time.time() - started_at
             message = "run_time=%f, error=[%s]" % (run_time, error)
             self._log_progress("UNEXPECTED_ERROR", message)
@@ -246,7 +247,7 @@ class QueryExecutor(object):
         return query_runner.annotate_query(self.query, self.metadata)
 
     def _log_progress(self, state, message=''):
-        logger.info(
+        get_logger().info(
             "job=execute_query [state=%s] [query_id=%s] [query_hash=%s] [ds_id=%d] [ds_type=%s] [queue=%s], %s",
             state,
             self.metadata.get("Query ID", "unknown"),

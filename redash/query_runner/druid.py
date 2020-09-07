@@ -31,18 +31,18 @@ import re
 import random
 
 #import logging
-#logger = logging.getLogger("druid")
 from redash.worker import get_job_logger
-logger = get_job_logger(__name__)
+def get_logger():
+    return get_job_logger(__name__)
 
 #表名转换
 def ReplaceTableName(querystr, old_name, new_name):
     '''
     #return querystr.replace(old_name, new_name)
-    TABLE_NAME_REPL_REG = "(\s|\))(TABLE_NAME)(\s|\(|$)"
+    TABLE_NAME_REPL_REG = "(\s|\))(TABLE_NAME)(\s|\(|\.|$)"
     正则替换时，索引0是整体，接下来是按次序出现的每个(，这里保留1和3，把2换掉
     '''
-    pattern = "(\s|\))(" + old_name + ")(\s|\(|$)"
+    pattern = "(\s|\))(" + old_name + ")(\s|\(|\.|$)"
     return re.sub(pattern, lambda x:x.group(1) + new_name + x.group(3), querystr, flags=re.I)
 
 #判断是否是创建表的SQL语句
@@ -116,29 +116,33 @@ class Druid(BaseQueryRunner):
     def enabled(cls):
         return enabled
 
+    def get_logger(self):
+        #logger = logging.getLogger("druid")
+        return get_job_logger(__name__)
+
     def _log_debug(self, message):
-        logger.debug("###druid### [query_id=%s] [query_hash=%s], %s",
+        get_logger().debug("###druid### [query_id=%s] [query_hash=%s], %s",
             self.metadata.get("Query ID", "unknown"),
             self.metadata.get("Query Hash", "unknown"),
             message,
         )
 
     def _log_info(self, message):
-        logger.info("###druid### [query_id=%s] [query_hash=%s], %s",
+        get_logger().info("###druid### [query_id=%s] [query_hash=%s], %s",
             self.metadata.get("Query ID", "unknown"),
             self.metadata.get("Query Hash", "unknown"),
             message,
         )
 
     def _log_warning(self, message):
-        logger.warning("###druid### [query_id=%s] [query_hash=%s], %s",
+        get_logger().warning("###druid### [query_id=%s] [query_hash=%s], %s",
             self.metadata.get("Query ID", "unknown"),
             self.metadata.get("Query Hash", "unknown"),
             message,
         )
 
     def _log_error(self, message):
-        logger.error("###druid### [query_id=%s] [query_hash=%s], %s",
+        get_logger().error("###druid### [query_id=%s] [query_hash=%s], %s",
             self.metadata.get("Query ID", "unknown"),
             self.metadata.get("Query Hash", "unknown"),
             message,
