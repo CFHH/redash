@@ -1,25 +1,29 @@
 #!/bin/bash
+
+source /root/vredash/bin/activate
+cd /root/vredash/redash
+
 redis-cli -h localhost -p 6379 flushall
-./manage.py runserver  --host 0.0.0.0 &
-./manage.py rq scheduler &
-./manage.py rq worker queries &
-./manage.py rq worker scheduled_queries periodic emails default schemas &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
-./manage.py rq worker queries &
+nohup ./manage.py runserver  --host 0.0.0.0 &
+nohup ./manage.py rq scheduler &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker scheduled_queries periodic emails default schemas &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
+nohup ./manage.py rq worker queries &
