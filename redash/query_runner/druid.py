@@ -1,6 +1,5 @@
 try:
     from pydruid.db import connect
-
     enabled = True
 except ImportError:
     enabled = False
@@ -11,6 +10,15 @@ from redash.utils import enum, json_dumps, json_loads
 
 from six.moves import urllib
 from base64 import b64encode
+
+import random
+import sqlite3
+import re
+import threading
+
+#import logging
+from redash.worker import get_job_logger
+
 
 TYPES_MAP = {1: TYPE_STRING, 2: TYPE_INTEGER, 3: TYPE_BOOLEAN}
 PYTHON_TYPES_MAP = {"str": TYPE_STRING, "int": TYPE_INTEGER, "bool": TYPE_BOOLEAN, "float": TYPE_FLOAT}
@@ -26,12 +34,6 @@ QueryMode = enum(
 
 QUERY_MODE_SQLITE_PREFIX = "SQLITE:"
 
-import sqlite3
-import re
-import random
-
-#import logging
-from redash.worker import get_job_logger
 def get_logger():
     return get_job_logger(__name__)
 
@@ -88,6 +90,11 @@ class CustomException(Exception):
         return self.info
     def read(self):
         return self.info
+
+
+class Result(object):
+    def __init__(self):
+        pass
 
 
 class Druid(BaseQueryRunner):
@@ -216,6 +223,16 @@ class Druid(BaseQueryRunner):
             json_data, error = self.run_custom_query(querystr, user)
 
         return json_data, error
+
+    def _run_query_threading(self, query, user, sqlite_query_param, result):
+        result.json_data = None
+        result.error = None
+        try:
+            result.json_data, result.error = self.run_query_obj_result(query, user, sqlite_query_param)
+        except Exception as e:
+            result.error = str(e)
+        finally:
+            pass
 
     def remove_comments(self, querystr):
         '''
@@ -476,6 +493,11 @@ X{
         if error is not None:
             raise CustomException(error)
 
+        #threading: 是否使用多线程进行查询
+        use_threading = input_obj.get("threading")
+        if use_threading is None:
+            use_threading = True
+
         #store_to_db: 查询结果是否保存为sqlite的表，如果是，后续还得指定persist_table_name
         #   不需要可以不填，默认是False
         store_to_db = input_obj.get("store_to_db")
@@ -624,6 +646,8 @@ X{
             #三、执行子查询
             if sub_queries is not None:
                 json_data["data_ex"] = []
+                if use_threading:
+                    threads = []
                 for query_config in sub_queries:
                     #json配置
                     name = query_config.get("name")
@@ -647,19 +671,51 @@ X{
                         sub_persist_datetime_column = query_config.get("persist_datetime_column")
                         if sub_persist_datetime_column is not None and type(sub_persist_datetime_column).__name__ !="str":
                             raise CustomException("Incorrect Json data in sub_query %s: persist_datetime_column must be a string." % name)
-                    #查询
-                    self._log_info("Processing Sub Query:#####%s#####" % sub_query)
-                    query_data, query_error = self.run_query_obj_result(sub_query, user, sqlite_query_param)
-                    if query_error is not None:
-                        raise CustomException(query_error)
-                    if (query_data is None) or query_data.get("columns") is None:
-                        raise CustomException("Incorrect query data for sub query %s." % name)
-                    #存储
-                    if store_to_db:
-                        if query_error is None and len(query_data["columns"]) > 0:
-                            self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, sub_persist_table_name, sub_persist_datetime_column, drop_before_create = True)
+                    if use_threading:
+                        r = Result()
+                        r.config = query_config
+                        t = threading.Thread(target=self._run_query_threading, args=(sub_query, user, sqlite_query_param, r))
+                        threads.append({"t": t, "r": r})
+                        t.start()
                     else:
-                        json_data["data_ex"].append({"name": name, "data": query_data})
+                        #查询
+                        self._log_info("Processing Sub Query:#####%s#####" % sub_query)
+                        query_data, query_error = self.run_query_obj_result(sub_query, user, sqlite_query_param)
+                        if query_error is not None:
+                            raise CustomException(query_error)
+                        if (query_data is None) or query_data.get("columns") is None:
+                            raise CustomException("Incorrect query data for sub query %s." % name)
+                        #存储
+                        if store_to_db:
+                            if query_error is None and len(query_data["columns"]) > 0:
+                                self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, sub_persist_table_name, sub_persist_datetime_column, drop_before_create = True)
+                        else:
+                            json_data["data_ex"].append({"name": name, "data": query_data})
+
+                if use_threading:
+                    for itor in threads:
+                        itor["t"].join()
+                    for itor in threads:
+                        r = itor["r"]
+                        query_data = r.json_data
+                        query_error = r.error
+                        if query_error is not None:
+                            raise CustomException(query_error)
+                        if (query_data is None) or query_data.get("columns") is None:
+                            name = r.config["name"]
+                            raise CustomException("Incorrect query data for sub query %s." % name)
+                    for itor in threads:
+                        r = itor["r"]
+                        query_data = r.json_data
+                        query_error = r.error
+                        if store_to_db:
+                            if query_error is None and len(query_data["columns"]) > 0:
+                                sub_persist_table_name = r.config["sub_persist_table_name"]
+                                sub_persist_datetime_column = r.config["sub_persist_datetime_column"]
+                                self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, sub_persist_table_name, sub_persist_datetime_column, drop_before_create = True)
+                        else:
+                            name = r.config["name"]
+                            json_data["data_ex"].append({"name": name, "data": query_data})
 
         except CustomException as e:
             error = e.read()
