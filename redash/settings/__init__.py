@@ -236,7 +236,7 @@ SCHEDULED_QUERY_TIME_LIMIT = int(
 ADHOC_QUERY_TIME_LIMIT = int(os.environ.get("REDASH_ADHOC_QUERY_TIME_LIMIT", -1))
 
 #job.result_ttl, job执行成功后这个缓存"rq:job:e27209059575fcc17c527c47d0957cb21756e551的保留时间
-JOB_EXPIRY_TIME = int(os.environ.get("REDASH_JOB_EXPIRY_TIME", 60))
+JOB_EXPIRY_TIME = int(os.environ.get("REDASH_JOB_EXPIRY_TIME", 60 * 10))
 #等2天（periodic_job_definitions中purge_failed_jobs的间隔是1天）
 JOB_DEFAULT_FAILURE_TTL = int(
     os.environ.get("REDASH_JOB_DEFAULT_FAILURE_TTL",  60 * 60 * 24 * 2)
