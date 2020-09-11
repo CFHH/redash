@@ -15,6 +15,7 @@ from . import settings
 from .app import create_app  # noqa
 from .query_runner import import_query_runners
 from .destinations import import_destinations
+from .utils.mlogging import TimedRotatingFileHandler_MP
 
 __version__ = "9.0.0-alpha"
 
@@ -47,8 +48,9 @@ def setup_logging():
     log_path = os.path.join(redash_root_path, 'log')
     file_name = os.path.join(log_path, 'redash.log')
 
-    file_handler = TimedRotatingFileHandler(filename=file_name, when='D', interval=1, backupCount=15)
-    file_handler.suffix = '%Y%m%d.log'
+    #file_handler = TimedRotatingFileHandler(filename=file_name, when='D', interval=1, backupCount=15)
+    #file_handler.suffix = '%Y%m%d.log'
+    file_handler = TimedRotatingFileHandler_MP(filename=file_name, when='D', interval=1, backupCount=15)
     file_handler.setFormatter(formatter)
     stream_handler.addFilter(CurrentJobFilter())
     logging.getLogger().addHandler(file_handler)

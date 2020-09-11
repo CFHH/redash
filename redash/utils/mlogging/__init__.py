@@ -15,14 +15,18 @@
 # OF OR IN CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE.
 
 """
-Additional handler : RotatingFileHandler and TimedRotatingFileHandler 
+Additional handler : RotatingFileHandler and TimedRotatingFileHandler
                         for MultiProcess
 """
 
 from logging import StreamHandler, FileHandler
 from logging.handlers import RotatingFileHandler, TimedRotatingFileHandler
-import fcntl, time, os, codecs, string, re, types, cPickle, struct, shutil
+import fcntl, time, os, codecs, string, re, types, struct, shutil
 from stat import ST_DEV, ST_INO, ST_MTIME
+try:
+    import cPickle as pickle
+except ImportError:  # noqa  # pragma: no cover
+    import pickle
 
 
 class StreamHandler_MP(StreamHandler):
@@ -30,7 +34,7 @@ class StreamHandler_MP(StreamHandler):
     A handler class which writes logging records, appropriately formatted,
     to a stream. Use for multiprocess.
     """
-    
+
     def emit(self, record):
         """
         Emit a record.
@@ -39,15 +43,15 @@ class StreamHandler_MP(StreamHandler):
         try:
             if hasattr(self.stream, "seek"):
                 self.stream.seek(0, os.SEEK_END)
-        except IOError, e:
+        except IOError as e:
             pass
-        
+
         StreamHandler.emit(self, record)
 
 
 class FileHandler_MP(FileHandler, StreamHandler_MP):
     """
-    A handler class which writes formatted logging records to disk files 
+    A handler class which writes formatted logging records to disk files
         for multiprocess
     """
     def emit(self, record):
@@ -66,7 +70,7 @@ class RotatingFileHandler_MP(RotatingFileHandler, FileHandler_MP):
     """
     Handler for logging to a set of files, which switches from one file
     to the next when the current file reaches a certain size.
-    
+
     Based on logging.RotatingFileHandler, modified for Multiprocess
     """
     _lock_dir = '.lock'
@@ -97,15 +101,15 @@ class RotatingFileHandler_MP(RotatingFileHandler, FileHandler_MP):
                 shutil.copy(self.baseFilename, dfn)
         self.mode = 'w'
         self.stream = self._open()
-        
-    
+
+
     def emit(self, record):
         """
         Emit a record.
 
         Output the record to the file, catering for rollover as described
         in doRollover().
-        
+
         For multiprocess, we use file lock. Any better method ?
         """
         try:
@@ -121,8 +125,8 @@ class RotatingFileHandler_MP(RotatingFileHandler, FileHandler_MP):
             raise
         except:
             self.handleError(record)
-    
-        
+
+
 class TimedRotatingFileHandler_MP(TimedRotatingFileHandler, FileHandler_MP):
     """
     Handler for logging to a file, rotating the log file at certain timed
@@ -136,11 +140,11 @@ class TimedRotatingFileHandler_MP(TimedRotatingFileHandler, FileHandler_MP):
         pass
     else:
         os.mkdir(_lock_dir)
-    
+
     def __init__(self, filename, when='h', interval=1, backupCount=0, encoding=None, delay=0, utc=0):
         FileHandler_MP.__init__(self, filename, 'a', encoding, delay)
         self.encoding = encoding
-        self.when = string.upper(when)
+        self.when = when.upper()
         self.backupCount = backupCount
         self.utc = utc
         # Calculate the real rollover interval, which is just the number of
@@ -179,7 +183,7 @@ class TimedRotatingFileHandler_MP(TimedRotatingFileHandler, FileHandler_MP):
             raise ValueError("Invalid rollover interval specified: %s" % self.when)
 
         self.extMatch = re.compile(self.extMatch)
-        
+
         if interval != 1:
             raise ValueError("Invalid rollover interval, must be 1")
 
@@ -192,29 +196,29 @@ class TimedRotatingFileHandler_MP(TimedRotatingFileHandler, FileHandler_MP):
         the method signatures are the same
         """
         if not os.path.exists(self.baseFilename):
-            #print "file don't exist"  
-            return 0 
-        
-        cTime = time.localtime(time.time()) 
+            #print "file don't exist"
+            return 0
+
+        cTime = time.localtime(time.time())
         mTime = time.localtime(os.stat(self.baseFilename)[ST_MTIME])
         if self.when == "S" and cTime[5] != mTime[5]:
             #print "cTime:", cTime[5], "mTime:", mTime[5]
             return 1
-        elif self.when == 'M' and cTime[4] != mTime[4]:  
+        elif self.when == 'M' and cTime[4] != mTime[4]:
             #print "cTime:", cTime[4], "mTime:", mTime[4]
-            return 1  
-        elif self.when == 'H' and cTime[3] != mTime[3]: 
+            return 1
+        elif self.when == 'H' and cTime[3] != mTime[3]:
             #print "cTime:", cTime[3], "mTime:", mTime[3]
             return 1
         elif (self.when == 'MIDNIGHT' or self.when == 'D') and cTime[2] != mTime[2]:
             #print "cTime:", cTime[2], "mTime:", mTime[2]
-            return 1 
+            return 1
         elif self.when == 'W' and cTime[1] != mTime[1]:
             #print "cTime:", cTime[1], "mTime:", mTime[1]
             return 1
-        else:  
-            return 0 
-    
+        else:
+            return 0
+
 
     def doRollover(self):
         """
@@ -223,7 +227,7 @@ class TimedRotatingFileHandler_MP(TimedRotatingFileHandler, FileHandler_MP):
         start of the interval, not the current time.  If there is a backup count,
         then we have to get a list of matching filenames, sort them and remove
         the one with the oldest suffix.
-        
+
         For multiprocess, we use shutil.copy instead of rename.
         """
         if self.stream:
@@ -252,14 +256,14 @@ class TimedRotatingFileHandler_MP(TimedRotatingFileHandler, FileHandler_MP):
                 os.remove(s)
         self.mode = 'w'
         self.stream = self._open()
-    
+
     def emit(self, record):
         """
         Emit a record.
 
         Output the record to the file, catering for rollover as described
         in doRollover().
-        
+
         For multiprocess, we use file lock. Any better method ?
         """
         try:
@@ -275,4 +279,3 @@ class TimedRotatingFileHandler_MP(TimedRotatingFileHandler, FileHandler_MP):
             raise
         except:
             self.handleError(record)
-        
