@@ -26,7 +26,7 @@ from redash.permissions import (
     require_permission,
     view_only,
 )
-from redash.utils import collect_parameters_from_request
+from redash.utils import collect_parameters_from_request, json_loads, json_dumps
 from redash.serializers import QuerySerializer
 from redash.models.parameterized_query import ParameterizedQuery
 
@@ -391,19 +391,40 @@ class QueryResource(BaseResource):
 
         Responds with the :ref:`query <query-response-label>` contents.
         """
-        q = get_object_or_404(
-            models.Query.get_by_id_and_org, query_id, self.current_org
-        )
-        require_access(q, self.current_user, view_only)
+        data = json_loads(query_id)
+        if type(data).__name__ != "list":
+            q = get_object_or_404(
+                models.Query.get_by_id_and_org, query_id, self.current_org
+            )
+            require_access(q, self.current_user, view_only)
 
-        result = QuerySerializer(q, with_visualizations=True).serialize()
-        result["can_edit"] = can_modify(q, self.current_user)
+            result = QuerySerializer(q, with_visualizations=True).serialize()
+            result["can_edit"] = can_modify(q, self.current_user)
 
-        self.record_event(
-            {"action": "view", "object_id": query_id, "object_type": "query"}
-        )
+            self.record_event(
+                {"action": "view", "object_id": query_id, "object_type": "query"}
+            )
 
-        return result
+            return result
+
+        else:
+            results = []
+            for query_id in data:
+                q = get_object_or_404(
+                    models.Query.get_by_id_and_org, query_id, self.current_org
+                )
+                require_access(q, self.current_user, view_only)
+
+                result = QuerySerializer(q, with_visualizations=True).serialize()
+                result["can_edit"] = can_modify(q, self.current_user)
+
+                self.record_event(
+                    {"action": "view", "object_id": query_id, "object_type": "query"}
+                )
+
+                results.append(result)
+
+            return results
 
     # TODO: move to resource of its own? (POST /queries/{id}/archive)
     def delete(self, query_id):

@@ -316,7 +316,7 @@ class QueryResult(db.Model, QueryResultPersistence, BelongsToOrgMixin):
     query_text = Column("query", db.Text)
     _data = Column("data", db.Text)
     runtime = Column(postgresql.DOUBLE_PRECISION)
-    retrieved_at = Column(db.DateTime(True))
+    retrieved_at = Column(db.DateTime(True)) #utc time
 
     __tablename__ = "query_results"
 
