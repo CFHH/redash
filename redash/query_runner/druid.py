@@ -528,7 +528,7 @@ X{
         #   不需要可以不填
         persist_table_name = None
         persist_datetime_column = None
-        if store_to_db:
+        if store_to_db and (main_query is not None or final_sqlite_query is not None):
             persist_table_name = input_obj.get("persist_table_name")
             if persist_table_name is None or type(persist_table_name).__name__ !="str":
                 raise CustomException("Incorrect Json data: persist_table_name for main query must be a string.")
