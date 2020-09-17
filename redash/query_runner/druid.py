@@ -711,7 +711,7 @@ X{
                         if store_to_db:
                             if query_error is None and len(query_data["columns"]) > 0:
                                 sub_persist_table_name = r.config["persist_table_name"]
-                                sub_persist_datetime_column = r.config["persist_datetime_column"]
+                                sub_persist_datetime_column = r.config.get("persist_datetime_column")
                                 self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, sub_persist_table_name, sub_persist_datetime_column, drop_before_create = True)
                         else:
                             name = r.config["name"]
@@ -750,7 +750,7 @@ X{
         create_table_sql = "CREATE TABLE " + table_name + "("
         colume_index = 0
         for colume in query_data["columns"]:
-            if colume["name"] == datetime_column:
+            if datetime_column is not None and colume["name"] == datetime_column:
                 type_str = "DATETIME"
             else:
                 type_str = SQLITE_TYPES_MAP.get(colume["type"])
