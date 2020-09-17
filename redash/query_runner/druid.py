@@ -710,8 +710,8 @@ X{
                         query_error = r.error
                         if store_to_db:
                             if query_error is None and len(query_data["columns"]) > 0:
-                                sub_persist_table_name = r.config["sub_persist_table_name"]
-                                sub_persist_datetime_column = r.config["sub_persist_datetime_column"]
+                                sub_persist_table_name = r.config["persist_table_name"]
+                                sub_persist_datetime_column = r.config["persist_datetime_column"]
                                 self.store_data_to_sqlite(sqlite_connection, sqlite_cursor, query_data, sub_persist_table_name, sub_persist_datetime_column, drop_before_create = True)
                         else:
                             name = r.config["name"]
