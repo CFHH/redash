@@ -41,10 +41,10 @@ def get_logger():
 def ReplaceTableName(querystr, old_name, new_name):
     '''
     #return querystr.replace(old_name, new_name)
-    TABLE_NAME_REPL_REG = "(\s|\))(TABLE_NAME)(\s|\(|\.|$)"
+    TABLE_NAME_REPL_REG = "(\s|\))(TABLE_NAME)(\s|\(|\)|\.|$)"
     正则替换时，索引0是整体，接下来是按次序出现的每个(，这里保留1和3，把2换掉
     '''
-    pattern = "(\s|\))(" + old_name + ")(\s|\(|\.|$)"
+    pattern = "(\s|\))(" + old_name + ")(\s|\(|\)|\.|$)"
     return re.sub(pattern, lambda x:x.group(1) + new_name + x.group(3), querystr, flags=re.I)
 
 #判断是否是创建表的SQL语句
